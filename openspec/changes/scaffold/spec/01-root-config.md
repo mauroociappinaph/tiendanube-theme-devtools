@@ -422,6 +422,132 @@ Uses `standard-version` with Conventional Commits to generate changelog and tag.
 
 ---
 
+## Vitest Configuration (Testing Setup)
+
+### FR-CONF-TEST-001: Vitest Config for Extension + Native Host
+
+`vitest.config.ts` MUST support dual environments:
+
+```typescript
+// vitest.config.ts
+import { defineConfig } from 'vitest/config';
+import path from 'path';
+
+export default defineConfig({
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: ['./vitest.setup.ts'],
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      thresholds: {
+        lines: 80,
+        functions: 80,
+        branches: 70,
+        statements: 80,
+      },
+    },
+  },
+  resolve: {
+    alias: {
+      '@shared': path.resolve(__dirname, 'src/shared'),
+      '@background': path.resolve(__dirname, 'src/background'),
+      '@devtools': path.resolve(__dirname, 'src/devtools'),
+      '@content': path.resolve(__dirname, 'src/content'),
+      '@native-host': path.resolve(__dirname, 'src/native-host'),
+    },
+  },
+});
+```
+
+### FR-CONF-TEST-002: Vitest Setup (Chrome API Mocks)
+
+`vitest.setup.ts` MUST mock Chrome APIs for unit tests:
+
+```typescript
+// vitest.setup.ts
+import { vi } from 'vitest';
+
+// Mock chrome.* APIs
+const mockStorage = {
+  get: vi.fn().mockResolvedValue({}),
+  set: vi.fn().mockResolvedValue(undefined),
+  remove: vi.fn().mockResolvedValue(undefined),
+  onChanged: { addListener: vi.fn(), removeListener: vi.fn() },
+};
+
+const mockRuntime = {
+  sendMessage: vi.fn().mockResolvedValue({}),
+  onMessage: { addListener: vi.fn(), removeListener: vi.fn() },
+  onConnect: { addListener: vi.fn(), removeListener: vi.fn() },
+  connect: vi.fn(() => ({
+    postMessage: vi.fn(),
+    onMessage: { addListener: vi.fn(), removeListener: vi.fn() },
+    onDisconnect: { addListener: vi.fn(), removeListener: vi.fn() },
+  })),
+  connectNative: vi.fn(() => ({
+    postMessage: vi.fn(),
+    onMessage: { addListener: vi.fn(), removeListener: vi.fn() },
+    onDisconnect: { addListener: vi.fn(), removeListener: vi.fn() },
+  })),
+  lastError: null,
+};
+
+const mockDevtools = {
+  panels: {
+    create: vi.fn().mockResolvedValue({}),
+    elements: { createPanel: vi.fn() },
+    sources: { createPanel: vi.fn() },
+  },
+};
+
+Object.defineProperty(globalThis, 'chrome', {
+  value: {
+    storage: { local: mockStorage, sync: mockStorage, session: mockStorage },
+    runtime: mockRuntime,
+    devtools: mockDevtools,
+    tabs: { query: vi.fn(), sendMessage: vi.fn() },
+    scripting: { executeScript: vi.fn(), insertCSS: vi.fn() },
+    alarms: { create: vi.fn(), clear: vi.fn(), onAlarm: { addListener: vi.fn() } },
+  },
+  writable: true,
+});
+
+// Mock @preact/signals for tests
+vi.mock('@preact/signals', () => ({
+  signal: (initial: any) => ({
+    value: initial,
+    peek: () => initial,
+  }),
+  computed: (fn: () => any) => ({
+    value: fn(),
+    peek: () => fn(),
+  }),
+}));
+```
+
+### FR-CONF-TEST-003: Native Host Test Config
+
+Separate vitest config for Node.js environment (`vitest.native-host.config.ts`):
+
+```typescript
+// vitest.native-host.config.ts
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    globals: true,
+    environment: 'node',
+    include: ['src/native-host/**/*.test.ts'],
+    setupFiles: ['./vitest.native-host.setup.ts'],
+  },
+});
+```
+
+---
+
 ## Dependencies
 
 | Dependency | Version | Purpose | Type |

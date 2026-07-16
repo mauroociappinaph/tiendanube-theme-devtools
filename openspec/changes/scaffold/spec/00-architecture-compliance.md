@@ -749,6 +749,105 @@ If a file expected by the spec does NOT exist on disk:
 
 ---
 
+## Project Structure (Concrete)
+
+The scaffold MUST produce this exact directory structure:
+
+```
+src/
+├── manifest.ts                    # Manifest V3 typed (generates manifest.json)
+├── types/
+│   └── global.d.ts                # Global type declarations
+├── background/                    # Adapter: Chrome Service Worker
+│   ├── service-worker.ts          # Entry point
+│   ├── MessageRouter.ts           # Routes panel↔content↔native
+│   ├── NativeHostClient.ts        # Adapter for NativeHostPort (stdio JSON-RPC)
+│   ├── ChromeStorageAdapter.ts    # Adapter for StoragePort
+│   └── alarms.ts                  # Theme reload check alarm
+├── devtools/                      # Adapter: DevTools Panel (Preact)
+│   ├── devtools.html              # Panel HTML entry
+│   ├── devtools.ts                # chrome.devtools.panels.create() registration
+│   └── panel/
+│       ├── Panel.tsx              # Root Preact component (layout)
+│       ├── App.tsx                # Main app with state + message hooks
+│       ├── store/
+│       │   └── panelStore.ts      # Global reactive store (Preact Signals)
+│       ├── components/
+│       │   ├── LocalRemoteToggle.tsx
+│       │   ├── ReloadThemeButton.tsx
+│       │   ├── InspectModeToggle.tsx
+│       │   ├── StatusBar.tsx
+│       │   └── ErrorBoundary.tsx
+│       ├── hooks/
+│       │   ├── useChromeRuntime.ts
+│       │   ├── useConnectionState.ts
+│       │   └── useNativeHostStatus.ts
+│       ├── styles.css             # Global styles (CSP-compliant)
+│       ├── styles.module.css      # CSS Modules for components
+│       └── types.ts               # Panel-specific types
+├── content/                       # Adapter: Content Script
+│   ├── inspector.ts               # Entry + hover logic
+│   ├── LiquidFileDetector.ts      # Heuristics for Liquid file names
+│   ├── BadgeManager.ts            # Badge DOM injection + cleanup
+│   └── Throttle.ts                # 150ms debounce utility
+├── native-host/                   # Adapter: Node.js Native Messaging Host
+│   ├── main.ts                    # CLI entry: health, push, preview, watch
+│   ├── CommandDispatcher.ts       # JSON-RPC 2.0 dispatch
+│   ├── NubeCliExecutor.ts         # Spawns nube-cli, timeout, parsing
+│   ├── StdioTransport.ts          # stdin/stdout JSON-RPC framing
+│   ├── FileStorageAdapter.ts      # StoragePort adapter (file-based)
+│   ├── manifest.json              # Native messaging host manifest
+│   └── package.json               # Minimal deps (Node built-ins only)
+└── shared/                        # Domain / Core (zero external deps at runtime)
+    ├── result.ts                  # Result/Either pattern (Ok/Err)
+    ├── errors.ts                  # DomainError discriminated union
+    ├── messaging.ts               # Envelope, Request, Response types
+    ├── di.ts                      # Lightweight DI container
+    ├── logger.ts                  # Logger interface + ConsoleLogger/FileLogger
+    ├── ports/
+    │   ├── StoragePort.ts         # Interface for chrome.storage
+    │   ├── MessagingPort.ts       # Interface for chrome.runtime
+    │   └── NativeHostPort.ts      # Interface for native host
+    ├── storage.ts                 # Chrome storage wrapper (Result-based)
+    ├── types/
+    │   └── chrome.d.ts            # Chrome API augmentations
+    └── utils.ts                   # Pure utilities (debounce, uuid, etc.)
+
+Root config files:
+├── package.json
+├── tsconfig.json
+├── tsconfig.extension.json
+├── tsconfig.native-host.json
+├── esbuild.config.mjs
+├── vitest.config.ts
+├── .eslintrc.cjs
+├── .prettierrc
+├── .prettierignore
+├── scripts/
+│   ├── build-host.mjs
+│   ├── build-zip.mjs
+│   └── validate-env.js
+├── .github/
+│   ├── workflows/
+│   │   ├── ci.yml
+│   │   ├── lint.yml
+│   │   ├── typecheck.yml
+│   │   ├── test.yml
+│   │   ├── build.yml
+│   │   ├── dependency.yml
+│   │   └── release.yml
+│   └── dependabot.yml
+└── public/
+    └── icons/
+        ├── icon16.png
+        ├── icon48.png
+        └── icon128.png
+```
+
+**Traceability**: Hexagonal (Ports & Adapters) — domain in `shared/`, adapters per Chrome boundary. Each adapter is independently loadable and testable.
+
+---
+
 ## Summary Table (Updated)
 
 | Principle | FR/NFR Count | Key Files |
