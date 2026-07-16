@@ -1,0 +1,18 @@
+# DAG State — scaffold
+# Generated: 2026-07-16
+
+completed_phases:
+  - explore   # openspec/changes/scaffold/exploration.md
+  - propose   # openspec/changes/scaffold/proposal.md
+
+pending_phases:
+  - spec
+  - design
+  - tasks
+  - apply
+  - verify
+  - archive
+
+current_phase: propose
+next_phase: spec
+status: ready_for_spec
