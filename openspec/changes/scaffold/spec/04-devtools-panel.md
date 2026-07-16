@@ -240,7 +240,27 @@ The Preact bundle for the panel MUST NOT exceed 50KB gzipped. Preact itself is ~
 
 ### NFR-DTP-003: CSP Compliance
 
-All styles MUST use external `styles.css` OR inline styles via JSX `style` props (which Preact handles safely). No `<style>` tags or `<link>` additions from JavaScript at runtime.
+All styles MUST use **external CSS files** (CSS Modules: `*.module.css`) loaded via `<link rel="stylesheet">` in `devtools.html`.
+
+**Strict CSP** (no `'unsafe-inline'` for styles):
+```typescript
+// src/manifest.ts
+content_security_policy: {
+  extension_pages: "script-src 'self'; object-src 'self'; style-src 'self';"
+}
+```
+
+**Forbidden**:
+- Inline `<style>` tags
+- `style` attributes on elements (Preact JSX `style={{...}}` compiles to inline styles in dev, MUST be avoided)
+- Dynamic `<link>` insertion from JavaScript at runtime
+
+**Required**:
+- CSS Modules (`*.module.css`) imported in components → extracted to `dist/devtools/panel/*.css` by esbuild
+- `<link rel="stylesheet" href="panel/Component.module.css">` in `devtools.html`
+- Production build uses `preact/compat` with CSS extraction (esbuild `cssModules: true`)
+
+**Traceability**: Project policy — Chrome MV3 Security (FR-POL-012), Quality Gates (FR-POL-019).
 
 ### NFR-DTP-004: Responsive Layout
 

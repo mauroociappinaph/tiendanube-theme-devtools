@@ -172,7 +172,7 @@ export interface Logger {
 **CSP** (DevTools panel):
 ```
 script-src 'self' 'wasm-unsafe-eval'; // Preact needs eval for dev, production precompiled
-style-src 'self' 'unsafe-inline';     // CSS-in-JS or external CSS
+style-src 'self';                      // NO 'unsafe-inline' — CSS Modules + external stylesheets
 connect-src 'self' https://*.tiendanube.com https://*.nuvemshop.com.br;
 img-src 'self' data: blob:;
 font-src 'self' data:;
