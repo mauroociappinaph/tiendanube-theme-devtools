@@ -108,7 +108,7 @@ Generate valid Manifest V3, register Service Worker, implement message routing a
 ## PR #3: DevTools Panel (Preact)
 
 ### Goal
-Register DevTools panel, render Preact UI with stub components for: Local/Remote toggle, Reload Theme button, Inspect Mode toggle, Status Bar.
+Register DevTools panel, render Preact UI with stub components for: Local/Remote toggle, Reload Theme button, Inspect Mode toggle, Status Bar. **Global reactive store with Preact Signals for shared panel state.**
 
 ### Files Created
 | Path | Purpose | Est. Lines |
@@ -117,6 +117,7 @@ Register DevTools panel, render Preact UI with stub components for: Local/Remote
 | `src/devtools/devtools.ts` | `chrome.devtools.panels.create()` registration | 25 |
 | `src/devtools/panel/Panel.tsx` | Root Preact component (layout) | 50 |
 | `src/devtools/panel/App.tsx` | Main app with state + message hooks | 60 |
+| `src/devtools/panel/store/panelStore.ts` | **Global reactive store (Preact Signals)** | 45 |
 | `src/devtools/panel/components/LocalRemoteToggle.tsx` | Toggle + message to background | 35 |
 | `src/devtools/panel/components/ReloadThemeButton.tsx` | Button + loading state | 35 |
 | `src/devtools/panel/components/InspectModeToggle.tsx` | Toggle + content script activation | 35 |
@@ -130,7 +131,7 @@ Register DevTools panel, render Preact UI with stub components for: Local/Remote
 | `src/devtools/panel/types.ts` | Panel-specific types | 15 |
 
 ### Acceptance Criteria
-- AC-DP-01..07
+- AC-DP-01..07, **AC-DP-09-01..07** (panel store)
 
 ### CI Gates (extends PR #1-2)
 - Build produces `dist/devtools/devtools.html`, `dist/devtools/panel/*.js`

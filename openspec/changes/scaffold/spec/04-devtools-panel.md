@@ -226,6 +226,99 @@ Define the DevTools panel — the primary user interface of the extension. The p
 
 ---
 
+### FR-DTP-009: Global Panel Store (Preact Signals)
+
+`src/devtools/panel/store/panelStore.ts` MUST provide a global reactive store using **Preact Signals** (`@preact/signals`) for shared panel state.
+
+**Traceability**: Solves prop drilling — components share `loading`, `inspectMode`, `themeMode`, `status` without passing props through intermediate layers.
+
+#### Store Interface
+
+```typescript
+// src/devtools/panel/store/panelStore.ts
+import { signal, computed } from '@preact/signals';
+
+export type NativeHostStatus = 'connected' | 'disconnected' | 'pending' | 'error';
+export type ThemeMode = 'local' | 'remote';
+export type StatusBarState = 
+  | { type: 'ready' }
+  | { type: 'disconnected' }
+  | { type: 'host_not_found' }
+  | { type: 'loading'; message: string }
+  | { type: 'success'; message: string }
+  | { type: 'error'; message: string };
+
+export const panelStore = {
+  // Core state
+  nativeHostStatus: signal<NativeHostStatus>('pending'),
+  inspectMode: signal<boolean>(false),
+  themeMode: signal<ThemeMode>('remote'),
+  status: signal<StatusBarState>({ type: 'ready' }),
+  
+  // Derived state
+  isConnected: computed(() => 
+    panelStore.nativeHostStatus.value === 'connected' && panelStore.status.value.type !== 'error'
+  ),
+  
+  // Actions
+  setLoading(message: string) {
+    panelStore.status.value = { type: 'loading', message };
+  },
+  setSuccess(message: string) {
+    panelStore.status.value = { type: 'success', message };
+    setTimeout(() => panelStore.status.value = { type: 'ready' }, 3000);
+  },
+  setError(message: string) {
+    panelStore.status.value = { type: 'error', message };
+  },
+};
+
+// Hook for components
+export function usePanelStore() {
+  return panelStore;
+}
+```
+
+#### Scenario: ReloadThemeButton triggers loading state
+
+- GIVEN `ReloadThemeButton` is clicked
+- WHEN the reload starts
+- THEN `panelStore.setLoading('Recargando tema...')` is called
+- AND `StatusBar` immediately shows "Recargando tema..." (reactive)
+- AND `ReloadThemeButton` disables (reads `panelStore.status.value.type === 'loading'`)
+
+#### Scenario: InspectModeToggle updates shared state
+
+- GIVEN `InspectModeToggle` is clicked
+- WHEN it toggles
+- THEN `panelStore.inspectMode.set(true)` is called
+- AND `StatusBar` immediately shows "Inspect mode active" (derived from store)
+
+#### Scenario: LocalRemoteToggle persists mode
+
+- GIVEN `LocalRemoteToggle` changes to "local"
+- WHEN the toggle updates
+- THEN `panelStore.themeMode.set('local')` is called
+- AND mode is persisted to `chrome.storage.local`
+
+#### Scenario: Components auto-update on store change
+
+- GIVEN any store signal changes
+- WHEN Preact detects the change
+- THEN ALL components using `usePanelStore()` re-render automatically
+- WITHOUT manual prop passing or context providers
+
+#### Scenario: Store is lightweight
+
+- GIVEN `@preact/signals` is imported
+- WHEN bundle size is measured
+- THEN the signal overhead MUST be < 1KB gzipped
+- AND no additional runtime (like Redux/Zustand) is needed
+
+**Traceability**: Preact ecosystem choice — Signals integrate natively with Preact's reactivity model.
+
+---
+
 ## Non-Functional Requirements
 
 ### NFR-DTP-001: Panel Load Time
