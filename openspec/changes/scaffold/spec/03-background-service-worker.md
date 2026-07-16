@@ -212,6 +212,77 @@ interface MessageRouter {
 
 ---
 
+## Storage Port Alignment (Hexagonal Compliance)
+
+### FR-BG-007: StoragePort Implementation
+
+The background service worker's `ChromeStorageAdapter` MUST implement the `StoragePort` interface from `src/shared/ports/StoragePort.ts` (defined in `07-shared-core.md`).
+
+**Port Interface** (from `src/shared/ports/StoragePort.ts`):
+```typescript
+export interface StoragePort {
+  get<T>(key: string): Promise<Result<T | null, DomainError>>;
+  set<T>(key: string, value: T): Promise<Result<void, DomainError>>;
+  remove(key: string): Promise<Result<void, DomainError>>;
+  observe<T>(key: string): Observable<Result<T | null, DomainError>>;
+}
+```
+
+**Adapter Implementation** (`src/background/ChromeStorageAdapter.ts`):
+```typescript
+export class ChromeStorageAdapter implements StoragePort {
+  async get<T>(key: string): Promise<Result<T | null, DomainError>> {
+    try {
+      const result = await chrome.storage.local.get(key);
+      return ok(result[key] ?? null);
+    } catch (e) {
+      return err({ _tag: 'StorageError', operation: 'get', key, cause: e });
+    }
+  }
+
+  async set<T>(key: string, value: T): Promise<Result<void, DomainError>> {
+    try {
+      await chrome.storage.local.set({ [key]: value });
+      return ok(undefined);
+    } catch (e) {
+      return err({ _tag: 'StorageError', operation: 'set', key, cause: e });
+    }
+  }
+
+  async remove(key: string): Promise<Result<void, DomainError>> {
+    try {
+      await chrome.storage.local.remove(key);
+      return ok(undefined);
+    } catch (e) {
+      return err({ _tag: 'StorageError', operation: 'remove', key, cause: e });
+    }
+  }
+
+  observe<T>(key: string): Observable<Result<T | null, DomainError>> {
+    // Returns observable that emits on storage changes
+    const subject = new BehaviorSubject<Result<T | null, DomainError>>(ok(null));
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === 'local' && changes[key]) {
+        subject.next(ok(changes[key].newValue ?? null));
+      }
+    });
+    return subject;
+  }
+}
+```
+
+**DI Registration** (in service worker initialization):
+```typescript
+const container = createContainer();
+container.register(StoragePort, () => new ChromeStorageAdapter());
+container.register(NativeHostPort, () => new NativeHostClient());
+container.register(MessageRouter, () => new MessageRouter(container.resolve(StoragePort)));
+```
+
+**Traceability**: Hexagonal — Adapter implements Port (SRP, DIP). Background SW is the adapter; StoragePort is the contract.
+
+---
+
 ## Dependencies
 
 | Module | Direction | Purpose |

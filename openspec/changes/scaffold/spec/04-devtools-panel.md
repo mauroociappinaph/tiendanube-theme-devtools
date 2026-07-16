@@ -73,9 +73,9 @@ Define the DevTools panel — the primary user interface of the extension. The p
 
 ### FR-DTP-003: Root Preact Component
 
-`src/devtools/panel/Panel.tsx` MUST be the root Preact component that composes the panel layout.
+`src/devtools/panel/Panel.tsx` MUST be the root Preact component that composes the panel layout and wraps all children in an **Error Boundary**.
 
-**Traceability**: Preact UI framework from exploration decision.
+**Traceability**: Preact UI framework from exploration decision; Error Boundary for graceful failure handling.
 
 #### Scenario: Panel renders with all sections
 
@@ -87,6 +87,14 @@ Define the DevTools panel — the primary user interface of the extension. The p
   - A tools section with toggle and button components
   - A status bar at the bottom
 
+#### Scenario: Error Boundary catches component errors
+
+- GIVEN any child component throws during render
+- WHEN the error occurs
+- THEN `ErrorBoundary.tsx` MUST catch the error
+- AND render fallback UI: `<div class="panel-error">Panel error — recargá DevTools</div>`
+- AND the error MUST be logged via `panelStore.setError()` for error` for reporting
+
 #### Scenario: Empty state on fresh install
 
 - GIVEN the extension is freshly installed
@@ -94,6 +102,68 @@ Define the DevTools panel — the primary user interface of the extension. The p
 - THEN the status bar MUST show: "Status: Not connected"
 - AND the theme path input MUST be empty
 - AND inspect mode toggle MUST be off (grey/inactive state)
+
+### FR-DTP-003b: Error Boundary Component
+
+`src/devtools/panel/components/ErrorBoundary.tsx` MUST implement a Preact class component with `componentDidCatch` and `getDerivedStateFromError`.
+
+**Traceability**: SRP — error handling isolated; graceful degradation.
+
+#### Scenario: Error boundary fallback renders
+
+- GIVEN a child component throws during render
+- WHEN the error is caught
+- THEN the fallback UI MUST render in place of the failed subtree
+- AND the rest of the panel MUST remain interactive
+
+**Implementation**:
+```tsx
+// src/devtools/panel/components/ErrorBoundary.tsx
+import { Component, ComponentChildren } from 'preact';
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error?: Error;
+}
+
+export class ErrorBoundary extends Component<{ children: ComponentChildren; fallback: ComponentChildren }, ErrorBoundaryState> {
+  state: ErrorBoundaryState = { hasError: false };
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: { componentStack: string }) {
+    // Log via store for status bar reporting
+    panelStore.setError(`Panel error: ${error.message}`);
+    console.error('[ErrorBoundary]', error, errorInfo);
+  }
+
+  render({ children, fallback }: { children: ComponentChildren; fallback: ComponentChildren }) {
+    if (this.state.hasError) {
+      return <div class="panel-error">{fallback}</div>;
+    }
+    return children;
+  }
+}
+```
+
+**Usage in Panel.tsx**:
+```tsx
+// src/devtools/panel/Panel.tsx
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { App } from './App';
+
+export function Panel() {
+  return (
+    <ErrorBoundary fallback={<div class="panel-error">Panel error — recargá DevTools</div>}>
+      <App />
+    </ErrorBoundary>
+  );
+}
+```
+
+**Traceability**: SRP — error handling isolated; graceful degradation per NFR-DTP-001.
 
 ### FR-DTP-004: Local/Remote Toggle
 
@@ -112,7 +182,7 @@ Define the DevTools panel — the primary user interface of the extension. The p
 - GIVEN the toggle is set to "Remote"
 - WHEN the user clicks it
 - THEN it MUST switch to "Local"
-- AND the state MUST be persisted to `chrome.storage.local`
+- AND the state MUST be persisted via **StoragePort** (via DI)
 - AND a message MUST be sent to the background: `{ type: "SET_MODE", payload: { mode: "local" } }`
 
 #### Scenario: Toggle reflects stored state
@@ -121,6 +191,17 @@ Define the DevTools panel — the primary user interface of the extension. The p
 - WHEN the panel re-opens
 - THEN the toggle MUST render in the "Remote" position
 - AND the stored preference MUST be honored
+
+#### StoragePort Alignment (Hexagonal Compliance)
+
+- GIVEN the panel needs to persist theme mode
+- WHEN `LocalRemoteToggle` changes mode
+- THEN it MUST call `StoragePort.set('themeMode', mode)` via DI container
+- AND MUST NOT call `chrome.storage.local.set` directly
+- Background service worker's `ChromeStorageAdapter` handles the actual persistence
+- This enforces **Hexagonal Architecture** — panel is an adapter, storage logic is in shared port
+
+**Traceability**: Hexagonal (Ports & Adapters) — FR-ARCH-001, FR-ARCH-004; SRP — toggle only handles UI, persistence delegated to port.
 
 ### FR-DTP-005: Reload Theme Button
 

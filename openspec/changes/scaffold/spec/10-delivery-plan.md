@@ -70,6 +70,129 @@ npm run test             # skeleton tests pass
 
 ---
 
+## PR #1: Root Config + Shared Core
+
+### Goal
+Establish tooling, build pipeline, and shared domain layer. After merge: `npm install && npm run build` works (produces empty `dist/`).
+
+### Files Created
+| Path | Purpose | Est. Lines |
+|------|---------|------------|
+| `package.json` | Workspace root + scripts + deps | 55 |
+| `tsconfig.json` | Project references root | 25 |
+| `tsconfig.extension.json` | Extension layer TS config | 30 |
+| `tsconfig.native-host.json` | Native host TS config | 25 |
+| `esbuild.config.mjs` | Multi-entry build (4 entry points) | 80 |
+| `vitest.config.ts` | Test config (jsdom + node) | 35 |
+| `vitest.native-host.config.ts` | Native host test config (Node) | 25 |
+| `vitest.setup.ts` | Chrome API mocks (storage, runtime, devtools) | 45 |
+| `vitest.native-host.setup.ts` | Native host test setup (Node) | 15 |
+| `.eslintrc.cjs` | ESLint + TypeScript + Preact | 45 |
+| `.prettierrc` / `.prettierignore` | Formatting | 15 |
+| `src/shared/result.ts` | Result/Either pattern | 45 |
+| `src/shared/errors.ts` | DomainError discriminated union | 50 |
+| `src/shared/messaging.ts` | Envelope, Request, Response types | 55 |
+| `src/shared/di.ts` | Lightweight DI container | 50 |
+| `src/shared/logger.ts` | Logger interface + ConsoleLogger | 40 |
+| `src/shared/ports/StoragePort.ts` | Port interface | 15 |
+| `src/shared/ports/MessagingPort.ts` | Port interface | 15 |
+| `src/shared/ports/NativeHostPort.ts` | Port interface | 15 |
+| `src/shared/types/chrome.d.ts` | Chrome API augmentations | 25 |
+| `src/shared/utils.ts` | Pure utilities (debounce, uuid, etc.) | 60 |
+| `src/types/global.d.ts` | Global type declarations | 10 |
+
+### Acceptance Criteria (from 09-acceptance-criteria.md)
+- AC-RC-01..08, AC-SH-01..04, AC-CC-01..03
+
+### CI Gates (must pass before PR #2 can be reviewed)
+```yaml
+jobs:
+  lint: eslint src/
+  typecheck: tsc --noEmit -p tsconfig.extension.json -p tsconfig.native-host.json
+  test: vitest run
+  build: npm run build  # produces dist/ (empty but valid)
+```
+
+### Validation
+```bash
+npm ci && npm run build  # dist/manifest.json, dist/background/, dist/devtools/, dist/content/
+npm run typecheck        # 0 errors
+npm run lint             # 0 warnings
+npm run test             # skeleton tests pass
+```
+
+---
+
+## Cross-Adapter Integration Tests (New Section)
+
+### Goal
+Ensure end-to-end message flows work across all adapters: Panel → Background → Native Host → Background → Panel, and Panel → Background → Content Script.
+
+### Files Created (added to PR #5 scope)
+| Path | Purpose | Est. Lines |
+|------|---------|------------|
+| `tests/integration/panel-bg-native.test.ts` | Panel → BG → Native Host round-trip | 60 |
+| `tests/integration/panel-bg-content.test.ts` | Panel → BG → Content Script flow | 50 |
+| `tests/integration/storage-sync.test.ts` | Storage sync across adapters | 40 |
+| `tests/e2e/panel-load.test.ts` | Playwright: panel loads in Chrome | 35 |
+| `tests/e2e/theme-reload.test.ts` | Playwright: reload theme flow | 45 |
+| `tests/e2e/inspect-mode.test.ts` | Playwright: inspect mode flow | 45 |
+| `playwright.config.ts` | Playwright config (Chrome extension) | 30 |
+
+### Test Scenarios
+
+| Test ID | Type | Description |
+|---------|------|-------------|
+| IT-001 | Integration | Panel sends RELOAD_THEME → BG → Native Host → BG → Panel status updates |
+| IT-002 | Integration | Panel sends SET_MODE → BG → Storage → Content script receives |
+| IT-003 | Integration | Native host health check → BG → Panel status bar updates |
+| IT-004 | Integration | Content script hover → Badge injected → Panel status updates |
+| E2E-001 | E2E | Extension loads, DevTools panel renders, status bar shows "Not connected" |
+| E2E-002 | E2E | Click Reload Theme → Native host executes → Status shows success |
+| E2E-003 | E2E | Enable Inspect Mode → Hover element → Badge shows Liquid file name |
+
+### Playwright Config (Chrome Extension)
+
+```typescript
+// playwright.config.ts
+import { defineConfig, devices } from '@playwright/test';
+
+export default defineConfig({
+  testDir: './tests/e2e',
+  fullyParallel: true,
+  retries: 2,
+  workers: 1,
+  use: {
+    baseURL: 'https://tiendanube.com',
+    trace: 'on-first-retry',
+    screenshot: 'only-on-failure',
+  },
+  projects: [
+    {
+      name: 'chromium-extension',
+      use: {
+        ...devices['Desktop Chrome'],
+        launchOptions: {
+          args: [
+            '--disable-extensions-except=/path/to/extension',
+            '--load-extension=/path/to/extension',
+            '--no-first-run',
+            '--no-default-browser-check',
+          ],
+        },
+      },
+    },
+  ],
+  webServer: {
+    command: 'npm run dev:storefront', // or use live store
+    url: 'https://tiendanube.com',
+    reuseExistingServer: true,
+  },
+});
+```
+
+---
+
 ## PR #2: Manifest + Background Service Worker
 
 ### Goal
