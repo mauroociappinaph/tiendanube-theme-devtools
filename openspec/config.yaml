@@ -1,0 +1,46 @@
+# SDD Configuration — tiendanube-theme-devtools
+# Generated: 2026-07-16
+
+project: tiendanube-theme-devtools
+root: /Users/mauroociappina/Desktop/HiHi/ExtensionWebtlp
+
+context: |
+  Chrome DevTools extension for Tienda Nube / Nuvemshop theme development.
+  Provides Live CSS/JS toggling, Liquid inspect mode, one-click theme deploy via
+  native messaging, and Cmd+Shift+S shortcut integration.
+  Three main layers: extension/ (Manifest V3 DevTools panel + background + content),
+  native-host/ (Node.js binary for nube-cli commands), shared/ (TypeScript types).
+
+stack:
+  platform: chrome-extension
+  manifest_version: 3
+  runtime: chromium
+  languages:
+    - TypeScript (primary)
+    - JavaScript (fallback)
+    - CSS
+  bundler: not configured
+  build_toolchain: not configured
+
+strict_tdd: false
+reason: No test runner or test configuration detected.
+
+testing:
+  runner: null
+  layers:
+    unit: null
+    integration: null
+    e2e: null
+  coverage: null
+  linter: null
+  type_checker: null
+  formatter: null
+
+phases:
+  proposal: openspec/specs/{change}/proposal.md
+  spec: openspec/specs/{change}/spec.md
+  design: openspec/specs/{change}/design.md
+  tasks: openspec/specs/{change}/tasks.md
+  apply: openspec/changes/{change}/apply-progress.md
+  verify: openspec/changes/{change}/verify-report.md
+  archive: openspec/changes/{change}/archive-report.md
