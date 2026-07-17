@@ -212,70 +212,154 @@ Import with: `import type { ExtensionMessage } from '@/shared/messaging';`
 
 ---
 
-## Storage Port Alignment (Hexagonal Compliance)
+## Port Implementations (Hexagonal Compliance)
 
 ### FR-BG-007: StoragePort Implementation
 
-The background service worker's `ChromeStorageAdapter` MUST implement the `StoragePort` interface from `src/shared/ports/StoragePort.ts` (defined in `07-shared-core.md`).
+The background service worker's `ChromeStorageAdapter` MUST implement the **canonical** `StoragePort` interface from `src/shared/ports/StoragePort.ts` (defined in `07-shared-core.md`).
 
-**Port Interface** (from `src/shared/ports/StoragePort.ts`):
+**Canonical Port Interface** (from `src/shared/ports/StoragePort.ts`):
+
 ```typescript
+export interface StorageSchema {
+  mode: 'local' | 'remote';
+  themePath: string;
+  inspectMode: boolean;
+  schemaVersion: string;
+}
+
+export type StorageArea = 'local' | 'sync' | 'session';
+
 export interface StoragePort {
-  get<T>(key: string): Promise<Result<T | null, DomainError>>;
-  set<T>(key: string, value: T): Promise<Result<void, DomainError>>;
-  remove(key: string): Promise<Result<void, DomainError>>;
-  observe<T>(key: string): Observable<Result<T | null, DomainError>>;
+  get<T extends keyof StorageSchema>(
+    keys: T[],
+    area?: StorageArea
+  ): Promise<Pick<StorageSchema, T> | null>;
+
+  set<T extends keyof StorageSchema>(
+    data: Pick<StorageSchema, T>,
+    area?: StorageArea
+  ): Promise<void>;
+
+  remove(keys: string[], area?: StorageArea): Promise<void>;
+  clear(area?: StorageArea): Promise<void>;
+
+  observe<T extends keyof StorageSchema>(
+    key: T,
+    callback: (newValue: StorageSchema[T] | null, oldValue?: StorageSchema[T] | null) => void
+  ): () => void; // returns unsubscribe function
+
+  migrate(
+    fromVersion: string,
+    toVersion: string,
+    migrationFn: (oldData: Record<string, unknown>) => Record<string, unknown>
+  ): Promise<void>;
 }
 ```
 
 **Adapter Implementation** (`src/background/ChromeStorageAdapter.ts`):
+
 ```typescript
 export class ChromeStorageAdapter implements StoragePort {
-  async get<T>(key: string): Promise<Result<T | null, DomainError>> {
+  async get<T extends keyof StorageSchema>(
+    keys: T[],
+    area: StorageArea = 'local'
+  ): Promise<Pick<StorageSchema, T> | null> {
     try {
-      const result = await chrome.storage.local.get(key);
-      return ok(result[key] ?? null);
-    } catch (e) {
-      return err({ _tag: 'StorageError', operation: 'get', key, cause: e });
-    }
-  }
-
-  async set<T>(key: string, value: T): Promise<Result<void, DomainError>> {
-    try {
-      await chrome.storage.local.set({ [key]: value });
-      return ok(undefined);
-    } catch (e) {
-      return err({ _tag: 'StorageError', operation: 'set', key, cause: e });
-    }
-  }
-
-  async remove(key: string): Promise<Result<void, DomainError>> {
-    try {
-      await chrome.storage.local.remove(key);
-      return ok(undefined);
-    } catch (e) {
-      return err({ _tag: 'StorageError', operation: 'remove', key, cause: e });
-    }
-  }
-
-  observe<T>(key: string): Observable<Result<T | null, DomainError>> {
-    const subject = new BehaviorSubject<Result<T | null, DomainError>>(ok(null));
-    chrome.storage.onChanged.addListener((changes, area) => {
-      if (area === 'local' && changes[key]) {
-        subject.next(ok(changes[key].newValue ?? null));
+      const storage = area === 'sync' ? chrome.storage.sync : 
+                      area === 'session' ? chrome.storage.session : chrome.storage.local;
+      const result = await storage.get(keys);
+      const picked: Partial<StorageSchema> = {};
+      let hasAny = false;
+      for (const key of keys) {
+        if (key in result) {
+          picked[key] = result[key];
+          hasAny = true;
+        }
       }
-    });
-    return subject;
+      return hasAny ? picked as Pick<StorageSchema, T> : null;
+    } catch (e) {
+      throw new Error(`Storage get failed: ${e}`);
+    }
+  }
+
+  async set<T extends keyof StorageSchema>(
+    data: Pick<StorageSchema, T>,
+    area: StorageArea = 'local'
+  ): Promise<void> {
+    try {
+      const storage = area === 'sync' ? chrome.storage.sync :
+                      area === 'session' ? chrome.storage.session : chrome.storage.local;
+      await storage.set(data);
+    } catch (e) {
+      throw new Error(`Storage set failed: ${e}`);
+    }
+  }
+
+  async remove(keys: string[], area: StorageArea = 'local'): Promise<void> {
+    try {
+      const storage = area === 'sync' ? chrome.storage.sync :
+                      area === 'session' ? chrome.storage.session : chrome.storage.local;
+      await storage.remove(keys);
+    } catch (e) {
+      throw new Error(`Storage remove failed: ${e}`);
+    }
+  }
+
+  async clear(area: StorageArea = 'local'): Promise<void> {
+    try {
+      const storage = area === 'sync' ? chrome.storage.sync :
+                      area === 'session' ? chrome.storage.session : chrome.storage.local;
+      await storage.clear();
+    } catch (e) {
+      throw new Error(`Storage clear failed: ${e}`);
+    }
+  }
+
+  observe<T extends keyof StorageSchema>(
+    key: T,
+    callback: (newValue: StorageSchema[T] | null, oldValue?: StorageSchema[T] | null) => void
+  ): () => void {
+    const listener = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
+      if (areaName === area && changes[key]) {
+        callback(changes[key].newValue ?? null, changes[key].oldValue ?? null);
+      }
+    };
+    chrome.storage.onChanged.addListener(listener);
+    return () => chrome.storage.onChanged.removeListener(listener);
+  }
+
+  async migrate(
+    fromVersion: string,
+    toVersion: string,
+    migrationFn: (oldData: Record<string, unknown>) => Record<string, unknown>
+  ): Promise<void> {
+    const current = await this.get(['schemaVersion'] as any);
+    if (current?.schemaVersion === fromVersion) {
+      const allData = await this.get(['mode', 'themePath', 'inspectMode', 'schemaVersion'] as any);
+      if (allData) {
+        const migrated = migrationFn(allData as Record<string, unknown>);
+        await this.set(migrated as any);
+      }
+    }
   }
 }
 ```
 
 **DI Registration** (in service worker initialization):
+
 ```typescript
+import { createContainer, createToken } from '@/shared/di';
+import { StoragePort } from '@/shared/ports/StoragePort';
+import { NativeHostPort } from '@/shared/ports/NativeHostPort';
+
 const container = createContainer();
-container.register(StoragePort, () => new ChromeStorageAdapter());
-container.register(NativeHostPort, () => new NativeHostClient());
-container.register(MessageRouter, () => new MessageRouter(container.resolve(StoragePort)));
+const StoragePortToken = createToken<StoragePort>('StoragePort');
+const NativeHostPortToken = createToken<NativeHostPort>('NativeHostPort');
+
+container.register(StoragePortToken, () => new ChromeStorageAdapter());
+container.register(NativeHostPortToken, () => new NativeHostClient());
+// MessageRouter receives StoragePort via DI
 ```
 
 **Traceability**: Hexagonal — Adapter implements Port (SRP, DIP). Background SW is the adapter; StoragePort is the contract.
@@ -284,47 +368,114 @@ container.register(MessageRouter, () => new MessageRouter(container.resolve(Stor
 
 ### FR-BG-008: NativeHostPort Implementation
 
-The background service worker's `NativeHostClient` MUST implement the `NativeHostPort` interface from `src/shared/ports/NativeHostPort.ts` (defined in `07-shared-core.md`).
+The background service worker's `NativeHostClient` MUST implement the **canonical** `NativeHostPort` interface from `src/shared/ports/NativeHostPort.ts` (defined in `07-shared-core.md`).
 
-**Port Interface** (from `src/shared/ports/NativeHostPort.ts`):
+**Canonical Port Interface** (from `src/shared/ports/NativeHostPort.ts`):
+
 ```typescript
 export interface NativeHostPort {
   connect(): Promise<Result<void, DomainError>>;
   disconnect(): Promise<void>;
   send<T>(command: string, payload: unknown): Promise<Result<T, DomainError>>;
-  onNotification: (handler: (method: string, params: unknown) => void) => void;
+  onNotification(handler: (method: string, params: unknown) => void): void;
   healthCheck(): Promise<Result<HealthResult, DomainError>>;
+}
+
+export interface HealthResult {
+  status: 'healthy' | 'degraded' | 'unhealthy';
+  cli?: { path: string; version: string };
+  permissions?: Record<string, boolean>;
+  timestamp: number;
 }
 ```
 
 **Adapter Implementation** (`src/background/NativeHostClient.ts`):
+
 ```typescript
+import { NativeHostPort, HealthResult } from '@/shared/ports/NativeHostPort';
+import { Result, ok, err, DomainError } from '@/shared/result';
+import { createMessage } from '@/shared/messaging';
+
 export class NativeHostClient implements NativeHostPort {
   private port: chrome.runtime.Port | null = null;
-  private pending = new Map<string, { resolve: Function; reject: Function }>();
+  private pending = new Map<string, { resolve: (value: Result<any, DomainError>) => void; reject: (err: DomainError) => void }>();
+  private notificationHandler?: (method: string, params: unknown) => void;
 
   async connect(): Promise<Result<void, DomainError>> {
-    this.port = chrome.runtime.connectNative('com.tiendanube.theme-devtools');
-    this.port.onMessage.addListener(this.onMessage.bind(this));
-    this.port.onDisconnect.addListener(this.onDisconnect.bind(this));
-    return ok(undefined);
+    try {
+      this.port = chrome.runtime.connectNative('com.tiendanube.theme-devtools');
+      this.port.onMessage.addListener(this.onMessage.bind(this));
+      this.port.onDisconnect.addListener(this.onDisconnect.bind(this));
+      return ok(undefined);
+    } catch (e) {
+      return err({ _tag: 'NativeHostUnavailable', reason: String(e) });
+    }
+  }
+
+  async disconnect(): Promise<void> {
+    this.port?.disconnect();
+    this.port = null;
+    this.pending.clear();
   }
 
   async send<T>(command: string, payload: unknown): Promise<Result<T, DomainError>> {
-    const id = crypto.randomUUID();
-    const message = { type: 'NATIVE_COMMAND', id, command, payload };
-    return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+    if (!this.port) {
+      return err({ _tag: 'NativeHostUnavailable', reason: 'Not connected' });
+    }
+
+    const correlationId = crypto.randomUUID();
+    const message = createMessage('NATIVE_COMMAND', { command, payload, correlationId }, 'background');
+
+    return new Promise((resolve) => {
+      this.pending.set(correlationId, { resolve: resolve as any, reject: () => {} });
       this.port!.postMessage(message);
+
+      // 30 second timeout
       setTimeout(() => {
-        if (this.pending.has(id)) {
-          this.pending.delete(id);
-          reject({ _tag: 'MessageTimeout' });
+        if (this.pending.has(correlationId)) {
+          this.pending.delete(correlationId);
+          resolve(err({ _tag: 'MessageTimeout', correlationId }));
         }
       }, 30000);
     });
   }
-  // ... onMessage, onDisconnect, healthCheck
+
+  onNotification(handler: (method: string, params: unknown) => void): void {
+    this.notificationHandler = handler;
+  }
+
+  async healthCheck(): Promise<Result<HealthResult, DomainError>> {
+    return this.send('system.health', {});
+  }
+
+  private onMessage(message: any): void {
+    // Handle NATIVE_RESPONSE
+    if (message.type === 'NATIVE_RESPONSE' && message.payload.correlationId) {
+      const { correlationId, result, error } = message.payload;
+      const pending = this.pending.get(correlationId);
+      if (pending) {
+        this.pending.delete(correlationId);
+        if (error) {
+          pending.resolve(err({ _tag: 'NativeHostError', code: error.code, message: error.message }));
+        } else {
+          pending.resolve(ok(result));
+        }
+      }
+    }
+    // Handle NATIVE_NOTIFICATION (watch events)
+    else if (message.type === 'NATIVE_NOTIFICATION' && this.notificationHandler) {
+      this.notificationHandler(message.payload.method, message.payload.params);
+    }
+  }
+
+  private onDisconnect(): void {
+    this.port = null;
+    // Reject all pending with NativeHostUnavailable
+    for (const [, { resolve }] of this.pending) {
+      resolve(err({ _tag: 'NativeHostUnavailable', reason: 'Port disconnected' }));
+    }
+    this.pending.clear();
+  }
 }
 ```
 
@@ -336,11 +487,12 @@ export class NativeHostClient implements NativeHostPort {
 
 | Module | Direction | Purpose |
 |--------|-----------|---------|
-| `src/shared/messaging.ts` | Imports types | Discriminated message types |
-| `src/shared/storage.ts` | Imports functions | Settings persistence |
+| `src/shared/messaging.ts` | Imports types | Discriminated message types (canonical) |
+| `src/shared/result.ts` | Imports types | Result/Either pattern |
+| `src/shared/errors.ts` | Imports types | DomainError types |
 | `src/shared/utils.ts` | Imports helpers | Error formatting, logging |
-| `src/shared/ports/StoragePort.ts` | Implements | Settings persistence contract |
-| `src/shared/ports/NativeHostPort.ts` | Implements | Native host communication contract |
+| `src/shared/ports/StoragePort.ts` | **Implements** | Settings persistence contract (canonical) |
+| `src/shared/ports/NativeHostPort.ts` | **Implements** | Native host communication contract (canonical) |
 | `src/shared/ports/MessagingPort.ts` | Implements | Message routing contract |
 | `src/shared/validation.ts` | Imports | Zod schemas for message validation |
 | `src/shared/logger.ts` | Imports | Structured logging |
@@ -374,7 +526,12 @@ Messages through `chrome.runtime.sendMessage` MUST NOT exceed Chrome's 64KB payl
 ## Interface Contracts
 
 ```typescript
-// Ports managed by the service worker
+// Ports managed by the service worker (canonical from shared-core)
+import type { StoragePort } from '@/shared/ports/StoragePort';
+import type { NativeHostPort, HealthResult } from '@/shared/ports/NativeHostPort';
+import type { MessagingPort } from '@/shared/ports/MessagingPort';
+import type { ExtensionMessage, DomainError, Result } from '@/shared/messaging';
+
 interface ServiceWorkerPorts {
   panelConnections: Map<string, chrome.runtime.Port>;
   nativePort: chrome.runtime.Port | null;
@@ -389,15 +546,8 @@ interface MessageRouter {
     sendResponse: (response: ExtensionMessage) => void
   ): boolean;
 
-  handleNativeMessage(message: NativeMessage): void;
+  handleNativeMessage(message: any): void;
   handlePanelDisconnect(port: chrome.runtime.Port): void;
-}
-
-interface NativeHostClient {
-  connect(): Promise<Result<void, DomainError>>;
-  disconnect(): Promise<void>;
-  send<T>(command: string, payload: unknown): Promise<Result<T, DomainError>>;
-  healthCheck(): Promise<Result<{ status: 'ok'; version: string }, DomainError>>;
 }
 ```
 
