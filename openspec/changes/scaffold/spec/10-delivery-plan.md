@@ -311,50 +311,43 @@ node dist/native-host/host.node.js push --theme-id 123
 
 ---
 
-## PR #4: Content Inspector + Native Host
+## PR #4: DevTools Panel (Preact)
 
 ### Goal
-Content script detects Tiendanube pages, hover → badge with Liquid file name. Native host binary executes `nube-cli` commands.
+Register DevTools panel, render Preact UI with stub components for: Local/Remote toggle, Reload Theme button, Inspect Mode toggle, Status Bar. **Global reactive store with Preact Signals for shared panel state.** Requires Background SW (PR #2) and Native Host (PR #3).
 
 ### Files Created
 | Path | Purpose | Est. Lines |
 |------|---------|------------|
-| `src/content/inspector.ts` | Content script entry + hover logic | 80 |
-| `src/content/InspectorController.ts` | Orchestrator + state machine | 60 |
-| `src/content/InspectorStateMachine.ts` | State machine: idle→detecting→ready→inspecting→cleaning | 50 |
-| `src/content/PageDetector.ts` | Page classification (storefront/admin/checkout/unknown) | 50 |
-| `src/content/LiquidMapper.ts` | Pure function: element → LiquidFileMapping | 50 |
-| `src/content/HoverHandler.ts` | Throttled hover (150ms), IntersectionObserver, RAF positioning | 60 |
-| `src/content/BadgeManager.ts` | Interface + DOM implementation (inject, position, cleanup) | 45 |
-| `src/content/SPANavigationHandler.ts` | MutationObserver + history.pushState patching | 40 |
-| `src/content/MessageHandler.ts` | Message routing: ACTIVATE/DEACTIVATE_INSPECT, PAGE_DETECTED, HOVER_EVENT | 50 |
-| `src/content/Throttle.ts` | 150ms debounce utility + RAF helpers | 15 |
-| `src/native-host/main.ts` | CLI entry: health, push, preview, watch | 90 |
-| `src/native-host/CommandDispatcher.ts` | JSON-RPC 2.0 dispatch | 40 |
-| `src/native-host/NubeCliExecutor.ts` | Spawns nube-cli, timeout, parsing | 50 |
-| `src/native-host/StdioTransport.ts` | stdin/stdout JSON-RPC framing | 35 |
-| `src/native-host/FileStorageAdapter.ts` | StoragePort adapter (file-based) | 25 |
-| `src/native-host/package.json` | Native host deps (minimal) | 15 |
+| `src/devtools/devtools.html` | Panel HTML entry | 20 |
+| `src/devtools/devtools.ts` | `chrome.devtools.panels.create()` registration | 25 |
+| `src/devtools/panel/Panel.tsx` | Root Preact component (layout) | 50 |
+| `src/devtools/panel/App.tsx` | Main app with state + message hooks | 60 |
+| `src/devtools/panel/store/panelStore.ts` | **Global reactive store (Preact Signals)** | 45 |
+| `src/devtools/panel/components/LocalRemoteToggle.tsx` | Toggle + message to background | 35 |
+| `src/devtools/panel/components/ReloadThemeButton.tsx` | Button + loading state | 35 |
+| `src/devtools/panel/components/InspectModeToggle.tsx` | Toggle + content script activation | 35 |
+| `src/devtools/panel/components/StatusBar.tsx` | Connection state + version | 25 |
+| `src/devtools/panel/components/ErrorBoundary.tsx` | Preact error boundary | 20 |
+| `src/devtools/panel/hooks/useChromeRuntime.ts` | `chrome.runtime.sendMessage` wrapper | 30 |
+| `src/devtools/panel/hooks/useConnectionState.ts` | Background connection state | 25 |
+| `src/devtools/panel/hooks/useNativeHostStatus.ts` | Native host health polling | 20 |
+| `src/devtools/panel/styles.css` | Panel styling (CSP-compliant) | 40 |
+| `src/devtools/panel/styles.module.css` | CSS Modules for components | 25 |
+| `src/devtools/panel/types.ts` | Panel-specific types | 15 |
 
 ### Acceptance Criteria
-- AC-CI-01..06, AC-NH-01..07
+- AC-DP-01..07, **AC-DP-08..13** (panel store)
 
 ### CI Gates (extends PR #1-3)
-- Build produces `dist/content/inspector.js`, `dist/native-host/host.node.js`
-- Native host binary via `npm run build:host`
+- Build produces `dist/devtools/devtools.html`, `dist/devtools/panel/*.js`
+- Panel bundle ≤ 50 KB gzipped
 
 ### Validation
 ```bash
-# Content: Open Tiendanube storefront → enable Inspect Mode → hover product card
-# Badge appears: "snippets/product-card.liquid" (or heuristic match)
-# Disable → badge removed, no DOM leaks
-
-# Native Host:
-node dist/native-host/host.node.js --health
-# { "status": "ok", "version": "0.1.0" }
-
-node dist/native-host/host.node.js push --theme-id 123
-# Executes nube-cli theme push, returns structured result
+# In Chrome: Open DevTools on any page → "🛠 Tienda Nube" tab appears
+# UI renders: toggles, button, status bar (all stubbed)
+# Console: no CSP violations, no errors
 ```
 
 ---
