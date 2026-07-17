@@ -46,7 +46,7 @@ The generated `manifest.json` MUST contain:
 | `description` | `"Chrome DevTools extension for Tienda Nube theme development"` | Chrome Web Store required |
 | `devtools_page` | `"devtools/devtools.html"` | Panel registration |
 | `background` | `{ "service_worker": "background/service-worker.js", "type": "module" }` | MV3 service worker |
-| `permissions` | `["storage", "nativeMessaging", "alarms"]` | Minimum required |
+| `permissions` | `["storage", "nativeMessaging", "activeTab", "scripting", "alarms"]` | Minimum required |
 | `host_permissions` | `["https://*.tiendanube.com/*", "https://*.nuvemshop.com.br/*"]` | Tiendanube domains |
 | `content_scripts` | One entry for `src/content/inspector.ts` | Inspection mode |
 | `icons` | `{ "16": ..., "48": ..., "128": ... }` | Extension icons |
@@ -137,6 +137,8 @@ The extension MUST declare the minimum viable set of permissions:
 permissions: [
   "storage",         // Persist panel state, settings
   "nativeMessaging", // Communicate with native host
+  "activeTab",       // Read tab info for theme detection
+  "scripting",       // Inject content script programmatically
   "alarms",          // Poll for native host health
 ] as const,
 ```

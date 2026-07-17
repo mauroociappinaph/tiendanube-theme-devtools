@@ -8,7 +8,7 @@
 
 This document consolidates all Acceptance Criteria (ACs) for the `scaffold` change. Each AC is traceable to a Functional Requirement (FR) and maps to a test level.
 
-**Total ACs**: 36 (Functional + Non-Functional + Quality)
+**Total ACs**: 57 (Functional + Non-Functional + Quality)
 
 ---
 
@@ -63,6 +63,12 @@ This document consolidates all Acceptance Criteria (ACs) for the `scaffold` chan
 | AC-DP-05 | FR-DP-05 | Status bar shows connection state (connected/disconnected/pending) | Functional | E2E | P1 |
 | AC-DP-06 | NFR-DP-01 | Panel bundle ≤ 50 KB gzipped | Performance | CI Gate | P1 |
 | AC-DP-07 | NFR-DP-02 | Cold mount ≤ 200ms | Performance | Lighthouse CI | P2 |
+| AC-DP-08 | FR-DTP-009 | `panelStore` exports signals for all shared state | Functional | Unit | P1 |
+| AC-DP-09 | FR-DTP-009 | `StatusBar` reacts to `panelStore.status` changes automatically | Functional | Integration | P0 |
+| AC-DP-10 | FR-DTP-009 | `ReloadThemeButton` click → `setLoading` → status bar shows loading | Functional | E2E | P0 |
+| AC-DP-11 | FR-DTP-009 | `InspectModeToggle` reads/writes `panelStore.inspectMode` | Functional | Unit | P1 |
+| AC-DP-12 | FR-DTP-009 | `LocalRemoteToggle` reads/writes `panelStore.themeMode` | Functional | Unit | P1 |
+| AC-DP-13 | FR-DTP-009 | `isConnected` computed updates when native host status changes | Functional | Integration | P1 |
 
 ### Content Inspector (05-content-inspector.md)
 
@@ -118,12 +124,12 @@ This document consolidates all Acceptance Criteria (ACs) for the `scaffold` chan
 | Root Config | 4 | 2 | 2 | 8 |
 | Manifest | 6 | 2 | 0 | 8 |
 | Background SW | 5 | 2 | 1 | 8 |
-| DevTools Panel | 5 | 2 | 0 | 7 |
+| DevTools Panel | 5 | 2 | 0 | 13 |
 | Content Inspector | 4 | 2 | 0 | 6 |
 | Native Host | 5 | 2 | 1 | 8 |
 | Shared Core | 4 | 0 | 0 | 4 |
 | Cross-Cutting | 5 | 0 | 3 | 8 |
-| **TOTAL** | **38** | **12** | **7** | **57** |
+| **TOTAL** | **38** | **12** | **7** | **63** |
 
 *Note: Some ACs span multiple categories; counted in primary category.*
 
@@ -133,9 +139,9 @@ This document consolidates all Acceptance Criteria (ACs) for the `scaffold` chan
 
 | Test Level | AC Count | Modules Covered |
 |------------|----------|-----------------|
-| Unit | 18 | All (logic, types, patterns) |
-| Integration | 12 | Messaging, storage, native host, DI |
-| E2E | 7 | Panel load, theme reload, inspector hover |
+| Unit | 19 | All (logic, types, patterns) |
+| Integration | 13 | Messaging, storage, native host, DI |
+| E2E | 8 | Panel load, theme reload, inspector hover |
 | CI Gate | 6 | Bundle sizes, typecheck, lint, CSP, circular deps |
 | Runtime | 2 | Unhandled rejections, CSP violations |
 | Lighthouse CI | 1 | Panel cold mount |
@@ -186,6 +192,7 @@ The following coverage thresholds MUST be met (matching `vitest.config.ts` in 01
 | lines | 80% |
 | functions | 80% |
 | branches | 70% |
+| statements | 80% |
 | statements | 80% |
 
 These thresholds are enforced by `npm run test:coverage` and the CI pipeline.

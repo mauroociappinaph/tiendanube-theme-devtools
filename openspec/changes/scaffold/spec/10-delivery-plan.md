@@ -60,7 +60,7 @@ The `scaffold` change delivers ~1,500 lines across ~50 files. Per SDD review bud
 
 **DoR** (before starting any PR): Spec exists + ACs clear + traceability + deps resolved + env ready + test skeletons + mocks ready + ADR if needed + estimation.
 
-**DoD** (before merge to main): Spec compliance ✅ + code quality (lint/typecheck/format) + tests pass + coverage ≥ targets (lines 80%, functions 80%, branches 70%) + build + arch validation + security audit + docs updated + agent self-eval + human approval.
+**DoD** (before merge to main): Spec compliance ✅ + code quality (lint/typecheck/format) + tests pass + coverage ≥ targets (lines 80%, functions 80%, branches 70%, statements 80%) + build + arch validation + security audit + docs updated + agent self-eval + human approval.
 
 See `00-architecture-compliance.md` for full DoR/DoD checklists and SDD Phase Gates.
 
@@ -384,7 +384,7 @@ Wire cross-cutting concerns (Result pattern enforcement, DI wiring, logging, CSP
 | `README.md` | Updated with dev commands | 40 |
 
 ### Acceptance Criteria
-- AC-CC-01..06, AC-RC-06, AC-CC-05..06
+- AC-CC-01..06, AC-RC-06
 
 ### CI Pipeline (`.github/workflows/ci.yml`)
 ```yaml
@@ -462,6 +462,7 @@ The following coverage thresholds MUST be met for all PRs (matching `vitest.conf
 | lines | 80% |
 | functions | 80% |
 | branches | 70% |
+| statements | 80% |
 | statements | 80% |
 
 These thresholds are enforced by `npm run test:coverage` and the CI pipeline.
@@ -556,6 +557,7 @@ The following coverage thresholds MUST be met for all PRs (matching `vitest.conf
 | lines | 80% |
 | functions | 80% |
 | branches | 70% |
+| statements | 80% |
 | statements | 80% |
 
 These thresholds are enforced by `npm run test:coverage` and the CI pipeline.
@@ -676,7 +678,7 @@ jobs:
 
 ### PR #1: Root Config + Shared Core
 **DoR Gate**: [ ] Spec exists + ACs clear + traceability + deps resolved + env ready + test skeletons + mocks ready + ADR if needed + estimation
-**DoD Gate**: [ ] Spec compliance ✅ + code quality (lint/typecheck/format) + tests pass + coverage ≥ targets (lines 80%, functions 80%, branches 70%) + build + arch validation + security audit + docs updated + agent self-eval + human approval
+**DoD Gate**: [ ] Spec compliance ✅ + code quality (lint/typecheck/format) + tests pass + coverage ≥ targets (lines 80%, functions 80%, branches 70%, statements 80%) + build + arch validation + security audit + docs updated + agent self-eval + human approval
 - [ ] `package.json` with all scripts, deps, workspaces
 - [ ] `tsconfig.json` + project references (3 layers)
 - [ ] `esbuild.config.mjs` with 4 entry points
@@ -689,7 +691,7 @@ jobs:
 
 ### PR #2: Manifest + Background SW
 **DoR Gate**: [ ] Spec exists + ACs clear + traceability + deps resolved + env ready + test skeletons + mocks ready + ADR if needed + estimation
-**DoD Gate**: [ ] Spec compliance ✅ + code quality (lint/typecheck/format) + tests pass + coverage ≥ targets (lines 80%, functions 80%, branches 70%) + build + arch validation + security audit + docs updated + agent self-eval + human approval
+**DoD Gate**: [ ] Spec compliance ✅ + code quality (lint/typecheck/format) + tests pass + coverage ≥ targets (lines 80%, functions 80%, branches 70%, statements 80%) + build + arch validation + security audit + docs updated + agent self-eval + human approval
 - [ ] `src/manifest.ts` → `manifest.json` (minimal perms FR-POL-016)
 - [ ] `src/background/service-worker.ts` + router, native host client
 - [ ] `src/background/NativeHostClient.ts` (port interface)
@@ -700,7 +702,7 @@ jobs:
 
 ### PR #3: DevTools Panel (Preact)
 **DoR Gate**: [ ] Spec exists + ACs clear + traceability + deps resolved + env ready + test skeletons + mocks ready + ADR if needed + estimation
-**DoD Gate**: [ ] Spec compliance ✅ + code quality (lint/typecheck/format) + tests pass + coverage ≥ targets (lines 80%, functions 80%, branches 70%) + build + arch validation + security audit + docs updated + agent self-eval + human approval
+**DoD Gate**: [ ] Spec compliance ✅ + code quality (lint/typecheck/format) + tests pass + coverage ≥ targets (lines 80%, functions 80%, branches 70%, statements 80%) + build + arch validation + security audit + docs updated + agent self-eval + human approval
 - [ ] `src/devtools/devtools.html` + `devtools.ts`
 - [ ] `src/devtools/panel/Panel.tsx` + `App.tsx`
 - [ ] Components: `LocalRemoteToggle`, `ReloadThemeButton`, `InspectModeToggle`, `StatusBar`, `ErrorBoundary`
@@ -710,7 +712,7 @@ jobs:
 
 ### PR #4: Content Inspector + Native Host
 **DoR Gate**: [ ] Spec exists + ACs clear + traceability + deps resolved + env ready + test skeletons + mocks ready + ADR if needed + estimation
-**DoD Gate**: [ ] Spec compliance ✅ + code quality (lint/typecheck/format) + tests pass + coverage ≥ targets (lines 80%, functions 80%, branches 70%) + build + arch validation + security audit + docs updated + agent self-eval + human approval
+**DoD Gate**: [ ] Spec compliance ✅ + code quality (lint/typecheck/format) + tests pass + coverage ≥ targets (lines 80%, functions 80%, branches 70%, statements 80%) + build + arch validation + security audit + docs updated + agent self-eval + human approval
 - [ ] `src/content/inspector.ts` + `LiquidFileDetector`, `BadgeManager`, `Throttle`
 - [ ] `src/native-host/main.ts` + `CommandDispatcher`, `NubeCliExecutor`, `StdioTransport`, `FileStorageAdapter`
 - [ ] `src/native-host/package.json`
@@ -719,7 +721,7 @@ jobs:
 
 ### PR #5: Cross-Cutting + CI/CD + Zip + Icons + README
 **DoR Gate**: [ ] Spec exists + ACs clear + traceability + deps resolved + env ready + test skeletons + mocks ready + ADR if needed + estimation
-**DoD Gate**: [ ] Spec compliance ✅ + code quality (lint/typecheck/format) + tests pass + coverage ≥ targets (lines 80%, functions 80%, branches 70%) + build + arch validation + security audit + docs updated + agent self-eval + human approval
+**DoD Gate**: [ ] Spec compliance ✅ + code quality (lint/typecheck/format) + tests pass + coverage ≥ targets (lines 80%, functions 80%, branches 70%, statements 80%) + build + arch validation + security audit + docs updated + agent self-eval + human approval
 - [ ] `src/shared/storage.ts` (Result-based chrome.storage wrapper)
 - [ ] Logger transports: `ConsoleLogger` (bg/panel/content), `FileLogger` (native)
 - [ ] CI: `build.yml` + `release.yml` + `dependency.yml` + `build-native.yml`

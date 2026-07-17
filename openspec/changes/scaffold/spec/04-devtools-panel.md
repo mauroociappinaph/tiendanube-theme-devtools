@@ -51,8 +51,8 @@ Define the DevTools panel — the primary user interface of the extension. The p
 <head>
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self';">
-  <link rel="stylesheet" href="styles.css">
+        content="default-src 'self'; style-src 'self'; script-src 'self';">
+  <link rel="stylesheet" href="panel/styles.css">
 </head>
 <body>
   <div id="root"></div>
@@ -69,7 +69,7 @@ Define the DevTools panel — the primary user interface of the extension. The p
 - WHEN inspecting the `<meta>` CSP tag
 - THEN the policy MUST restrict `default-src` to `'self'`
 - AND `script-src` MUST be `'self'`
-- AND `style-src` MUST allow `'self' 'unsafe-inline'`
+- AND `style-src` MUST be `'self'` (CSS Modules, no inline styles)
 
 ### FR-DTP-003: Root Preact Component
 
