@@ -190,7 +190,7 @@ export function Panel() {
 - GIVEN the user previously set the toggle to "Remote"
 - WHEN the panel re-opens
 - THEN the toggle MUST render in the "Remote" position
-- AND the stored preference MUST be honored
+- AND the stored preference MUST be honored via `StoragePort.get('themeMode')`
 
 #### StoragePort Alignment (Hexagonal Compliance)
 
@@ -521,7 +521,7 @@ interface ChromeRuntimeHook {
 |-------|-------|----------|
 | Background not responding | Service worker not running | Components show "Not connected" status |
 | Message timeout | Background doesn't respond in 5s | `sendMessage` rejects with timeout error |
-| Storage quota exceeded | Too many settings | `chrome.storage` set fails, caught and logged |
+| Storage quota exceeded | Too many settings | `StoragePort.set` fails, caught and logged |
 | Invalid panel state | Corrupted storage data | Default settings applied, corrupt data discarded |
 
 ---

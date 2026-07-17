@@ -106,6 +106,8 @@ This document consolidates all Acceptance Criteria (ACs) for the `scaffold` chan
 | AC-CC-04 | FR-CC-04 | Structured logging with correlation IDs in all contexts | Non-functional | Integration | P1 |
 | AC-CC-05 | FR-CC-05 | CSP violations = 0 in production build | Security | CI Gate | P0 |
 | AC-CC-06 | FR-CC-06 | Bundle size budgets enforced in CI | Performance | CI Gate | P1 |
+| AC-CC-07 | FR-CC-07 | Message Queue v2 design documented (deferred to follow-up) | Functional | Doc | P2 |
+| AC-CC-08 | FR-CC-08 | Command Bus v2 design documented (deferred to follow-up) | Functional | Doc | P2 |
 
 ---
 
@@ -120,8 +122,8 @@ This document consolidates all Acceptance Criteria (ACs) for the `scaffold` chan
 | Content Inspector | 4 | 2 | 0 | 6 |
 | Native Host | 5 | 2 | 1 | 8 |
 | Shared Core | 4 | 0 | 0 | 4 |
-| Cross-Cutting | 3 | 0 | 3 | 6 |
-| **TOTAL** | **36** | **12** | **7** | **55** |
+| Cross-Cutting | 5 | 0 | 3 | 8 |
+| **TOTAL** | **38** | **12** | **7** | **57** |
 
 *Note: Some ACs span multiple categories; counted in primary category.*
 

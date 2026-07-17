@@ -232,6 +232,56 @@ function validateOrigin(port: chrome.runtime.Port): boolean {
 
 ---
 
+## Non-Functional Requirements
+
+### NFR-CC-007: Message Queue v2 (Future)
+
+For the scaffold, the `MessageRouter` handles basic routing. A full `MessageQueue` with retry/backoff/dead-letter is deferred to a follow-up change.
+
+**Planned Interface**:
+```typescript
+// src/shared/messageQueue.ts (future)
+interface MessageQueue {
+  enqueue<T>(message: Envelope<T>): Promise<Result<void, DomainError>>;
+  dequeue(): Promise<Envelope<unknown> | null>;
+  deadLetter: Envelope<unknown>[];
+  retryPolicy: RetryPolicy;
+}
+```
+
+**Scope**: Background SW message reliability, native host command queuing.
+
+---
+
+### NFR-CC-008: Command Bus v2 (Future)
+
+The `CommandBus` in `shared/command.ts` provides basic dispatch. Advanced features (pipeline behaviors, saga orchestration, compensation) are deferred.
+
+**Planned Middleware**:
+- `LoggingMiddleware` — structured command logging
+- `TimingMiddleware` — latency tracking
+- `RetryMiddleware` — automatic retry with backoff
+- `CircuitBreakerMiddleware` — failure isolation
+
+---
+
+### NFR-CC-009: Performance Budget Enforcement
+
+Hard budgets enforced in CI for all bundles:
+
+| Metric | Budget | Enforcement |
+|--------|--------|-------------|
+| Panel bundle (gz) | ≤ 50 KB | `esbuild --analyze` + CI check |
+| Service Worker (gz) | ≤ 15 KB | Same |
+| Content Script (gz) | ≤ 10 KB | Same |
+| Native Host binary | ≤ 8 MB | `ls -lh` in CI |
+| Cold start (panel mount) | ≤ 200 ms | Lighthouse CI |
+| Message round-trip | ≤ 50 ms (local) | Integration test |
+
+**Traceability**: Project policy — Performance budgets (FR-POL-019).
+
+---
+
 ## 2. Non-Functional Requirements
 
 | NFR-ID | Requirement | Target | Verification |
@@ -407,6 +457,8 @@ interface LogContext {
 | FR-CC-04 | Logging centralizado, Nombres descriptivos | 00-architecture-compliance.md |
 | FR-CC-05 | Seguridad, Menor privilegio | 00-architecture-compliance.md |
 | FR-CC-06 | Funciones cortas, Responsabilidad única | 00-architecture-compliance.md |
+| FR-CC-07 | Message Queue v2 (Future) | 08-cross-cutting.md (NFR-CC-007) |
+| FR-CC-08 | Command Bus v2 (Future) | 08-cross-cutting.md (NFR-CC-008) |
 
 ---
 

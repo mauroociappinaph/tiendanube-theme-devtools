@@ -326,9 +326,15 @@ Content script detects Tiendanube pages, hover → badge with Liquid file name. 
 | Path | Purpose | Est. Lines |
 |------|---------|------------|
 | `src/content/inspector.ts` | Content script entry + hover logic | 80 |
-| `src/content/LiquidFileDetector.ts` | Heuristics for Liquid file names | 50 |
-| `src/content/BadgeManager.ts` | Badge DOM injection + cleanup | 45 |
-| `src/content/Throttle.ts` | 150ms debounce utility | 15 |
+| `src/content/InspectorController.ts` | Orchestrator + state machine | 60 |
+| `src/content/InspectorStateMachine.ts` | State machine: idle→detecting→ready→inspecting→cleaning | 50 |
+| `src/content/PageDetector.ts` | Page classification (storefront/admin/checkout/unknown) | 50 |
+| `src/content/LiquidMapper.ts` | Pure function: element → LiquidFileMapping | 50 |
+| `src/content/HoverHandler.ts` | Throttled hover (150ms), IntersectionObserver, RAF positioning | 60 |
+| `src/content/BadgeManager.ts` | Interface + DOM implementation (inject, position, cleanup) | 45 |
+| `src/content/SPANavigationHandler.ts` | MutationObserver + history.pushState patching | 40 |
+| `src/content/MessageHandler.ts` | Message routing: ACTIVATE/DEACTIVATE_INSPECT, PAGE_DETECTED, HOVER_EVENT | 50 |
+| `src/content/Throttle.ts` | 150ms debounce utility + RAF helpers | 15 |
 | `src/native-host/main.ts` | CLI entry: health, push, preview, watch | 90 |
 | `src/native-host/CommandDispatcher.ts` | JSON-RPC 2.0 dispatch | 40 |
 | `src/native-host/NubeCliExecutor.ts` | Spawns nube-cli, timeout, parsing | 50 |

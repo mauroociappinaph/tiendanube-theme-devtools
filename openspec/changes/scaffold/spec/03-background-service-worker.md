@@ -122,7 +122,7 @@ The service worker MUST manage a connection to the native host via `chrome.runti
 
 #### Scenario: Native host sends response
 
-- GIVEN the native host sends a JSON-RPC response
+- GIVEN the native host sends a response via native messaging protocol
 - WHEN the port's `onMessage` fires
 - THEN the service worker MUST correlate by `correlationId`
 - AND resolve the pending promise in `NativeHostClient`

@@ -415,7 +415,7 @@ export class InspectorController {
 ## Non-Functional Requirements
 
 ### NFR-CI-001: Bundle Size
-- **Content script ≤ 15KB gzipped** (esbuild IIFE format, tree-shaken)
+- **Content script ≤ 10 KB gzipped** (esbuild IIFE format, tree-shaken)
 
 ### NFR-CI-002: Performance Budgets
 | Metric | Budget | Enforcement |
@@ -423,7 +423,7 @@ export class InspectorController {
 | Hover latency (pointermove → badge visible) | ≤ 50ms | Unit test with fake timers |
 | Badge render time | ≤ 10ms | RAF callback measurement |
 | Memory (badges + listeners) | ≤ 5MB | Heap snapshot after deactivation |
-| Bundle size (gz) | ≤ 15KB | `esbuild --analyze` in CI |
+| Bundle size (gz) | ≤ 10 KB | `esbuild --analyze` in CI |
 
 ### NFR-CI-003: No Layout Thrashing
 - `getBoundingClientRect` called **once per hover** → cached → passed to badge
