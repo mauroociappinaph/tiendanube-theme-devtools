@@ -93,7 +93,7 @@ Define the DevTools panel — the primary user interface of the extension. The p
 - WHEN the error occurs
 - THEN `ErrorBoundary.tsx` MUST catch the error
 - AND render fallback UI: `<div class="panel-error">Panel error — recargá DevTools</div>`
-- AND the error MUST be logged via `panelStore.setError()` for error` for reporting
+- AND the error MUST be logged via `panelStore.setError()` for reporting
 
 #### Scenario: Empty state on fresh install
 
@@ -190,13 +190,13 @@ export function Panel() {
 - GIVEN the user previously set the toggle to "Remote"
 - WHEN the panel re-opens
 - THEN the toggle MUST render in the "Remote" position
-- AND the stored preference MUST be honored via `StoragePort.get('themeMode')`
+- AND the stored preference MUST be honored via `StoragePort.get(['themeMode'])`
 
 #### StoragePort Alignment (Hexagonal Compliance)
 
 - GIVEN the panel needs to persist theme mode
 - WHEN `LocalRemoteToggle` changes mode
-- THEN it MUST call `StoragePort.set('themeMode', mode)` via DI container
+- THEN it MUST call `StoragePort.set({ themeMode: mode })` via DI container
 - AND MUST NOT call `chrome.storage.local.set` directly
 - Background service worker's `ChromeStorageAdapter` handles the actual persistence
 - This enforces **Hexagonal Architecture** — panel is an adapter, storage logic is in shared port
@@ -380,7 +380,7 @@ export function usePanelStore() {
 - GIVEN `LocalRemoteToggle` changes to "local"
 - WHEN the toggle updates
 - THEN `panelStore.themeMode.set('local')` is called
-- AND mode is persisted to `chrome.storage.local`
+- AND mode is persisted to `chrome.storage.local` via `StoragePort`
 
 #### Scenario: Components auto-update on store change
 
@@ -444,16 +444,23 @@ The panel MUST be usable at widths from 300px (side panel) to 800px (full DevToo
 
 ## Interface Contracts
 
+All types are imported from the **canonical** shared-core definitions. See `07-shared-core.md` for full definitions.
+
 ```typescript
+// Import patterns for panel components:
+import type { ExtensionMessage, NativeHostStatus, ThemeMode } from '@/shared/messaging';
+import type { StoragePort } from '@/shared/ports/StoragePort';
+import type { Result, DomainError } from '@/shared/result';
+
 // Props for each panel component
 interface LocalRemoteToggleProps {
-  value: 'local' | 'remote';
-  onChange: (mode: 'local' | 'remote') => void;
+  value: ThemeMode;
+  onChange: (mode: ThemeMode) => void;
   disabled: boolean;
 }
 
 interface ReloadThemeButtonProps {
-  onReload: () => Promise<ReloadResult>;
+  onReload: () => Promise<Result<{ success: boolean; message: string }, DomainError>>;
   disabled: boolean;
   nativeHostStatus: NativeHostStatus;
 }
@@ -477,12 +484,10 @@ type StatusBarState =
   | { type: 'error'; message: string };
 
 // Return type of useChromeRuntime hook
-// Uses ExtensionMessage from src/shared/messaging.ts (defined in 07-shared-core.md)
-// Import with: import type { ExtensionMessage } from '@/shared/messaging';
 interface ChromeRuntimeHook {
   connected: boolean;
   nativeHostStatus: NativeHostStatus;
-  sendMessage: <T>(message: ExtensionMessage) => Promise<T>;
+  sendMessage: <T>(message: ExtensionMessage) => Promise<Result<T, DomainError>>;
 }
 ```
 
@@ -492,8 +497,10 @@ interface ChromeRuntimeHook {
 
 | Module | Direction | Purpose |
 |--------|-----------|---------|
-| `src/shared/messaging.ts` | Imports types | Message type definitions |
-| `src/shared/storage.ts` | Imports functions | Settings persistence |
+| `src/shared/messaging.ts` | **Imports types** | Message type definitions (canonical) |
+| `src/shared/ports/StoragePort.ts` | **Imports interface** | Settings persistence contract |
+| `src/shared/result.ts` | **Imports types** | Result/Either pattern |
+| `src/shared/errors.ts` | **Imports types** | DomainError types |
 | `src/devtools/devtools.html` | Shell for panel | HTML entry point |
 | `preact` | Runtime | UI framework |
 | `preact/compat` | Runtime | React compatibility layer |
@@ -542,3 +549,7 @@ interface ChromeRuntimeHook {
 | FR-DTP-008 | DRY | `useChromeRuntime.ts` |
 | NFR-DTP-002 | Preact Decision | Panel bundle |
 | NFR-DTP-003 | CSP Compliance | `devtools.html`, `styles.css` |
+
+---
+
+*End of DevTools Panel Spec*
