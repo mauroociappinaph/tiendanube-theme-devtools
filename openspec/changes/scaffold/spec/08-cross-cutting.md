@@ -7,9 +7,10 @@
 ## 1. Functional Requirements
 
 ### FR-CC-01: Error Handling — Result/Either Pattern
-**Description**: All fallible operations MUST return `Result<T, E>` (fp-ts style). No thrown exceptions for expected failures.
 
-**Details**:
+**Description**: All fallible operations MUST return `Result<T, E>` (canonical implementation in `src/shared/result.ts`). No thrown exceptions for expected failures.
+
+**Canonical Implementation** (from `src/shared/result.ts`):
 ```typescript
 // src/shared/result.ts
 export type Result<T, E> = Ok<T> | Err<E>;
@@ -32,9 +33,12 @@ export const match = <T, E, R>(
   onOk: (t: T) => R,
   onErr: (e: E) => R
 ): R => (r._tag === 'Ok' ? onOk(r.value) : onErr(r.error));
+
+export const unwrapOr = <T, E>(r: Result<T, E>, fallback: T): T =>
+  r._tag === 'Ok' ? r.value : fallback;
 ```
 
-**Domain Error Types** (discriminated unions):
+**Domain Error Types** (canonical from `src/shared/errors.ts`):
 ```typescript
 // src/shared/errors.ts
 export type DomainError =
@@ -44,7 +48,16 @@ export type DomainError =
   | { readonly _tag: 'NativeHostUnavailable'; readonly reason: string }
   | { readonly _tag: 'MessageTimeout'; readonly correlationId: string; readonly target: string }
   | { readonly _tag: 'SerializationFailed'; readonly cause: unknown }
-  | { readonly _tag: 'CSPViolation'; readonly directive: string; readonly blockedUri: string };
+  | { readonly _tag: 'CSPViolation'; readonly directive: string; readonly blockedUri: string }
+  | { readonly _tag: 'StorageError'; readonly operation: 'get' | 'set' | 'remove' | 'observe'; readonly key: string; readonly cause: unknown }
+  | { readonly _tag: 'CommandNotFound'; readonly command: string }
+  | { readonly _tag: 'PathTraversal'; readonly path: string }
+  | { readonly _tag: 'PathNotAllowed'; readonly path: string; readonly allowedBases: string[] }
+  | { readonly _tag: 'ParamTooLong'; readonly max: number; readonly actual: number }
+  | { readonly _tag: 'ForbiddenPattern'; readonly pattern: string; readonly input: string }
+  | { readonly _tag: 'CliExecutionFailed'; readonly command: string; readonly exitCode: number; readonly stderr: string }
+  | { readonly _tag: 'CliTimeout'; readonly command: string; readonly timeoutMs: number }
+  | { readonly _tag: 'InternalError'; readonly message: string; readonly cause?: unknown };
 ```
 
 **Applies to**: Background SW, Native Host, Content Script, DevTools Panel, Shared modules.
@@ -54,74 +67,126 @@ export type DomainError =
 ---
 
 ### FR-CC-02: Messaging Protocol — Correlation IDs & Request/Response
+
 **Description**: Every message crossing context boundaries carries a correlation ID for tracing and response matching.
 
-**Message Envelope**:
+**Canonical Message Types** (from `src/shared/messaging.ts`):
 ```typescript
 // src/shared/messaging.ts
-export interface Envelope<TPayload> {
-  readonly correlationId: string;           // UUID v4
-  readonly timestamp: number;               // Date.now()
-  readonly source: MessageSource;           // 'panel' | 'background' | 'content' | 'native-host'
-  readonly destination: MessageDestination; // same + 'broadcast'
-  readonly payload: TPayload;
-  readonly replyTo?: string;                // correlationId for response
+export interface BaseMessage {
+  correlationId: string;
+  timestamp: number;
+  source?: 'content' | 'background' | 'devtools' | 'native-host';
 }
 
-export type MessageSource = 'panel' | 'background' | 'content' | 'native-host';
-export type MessageDestination = MessageSource | 'broadcast';
+export type ExtensionMessage =
+  // Content → Background
+  | (BaseMessage & { type: 'PAGE_DETECTED'; payload: PageDetectionPayload })
+  | (BaseMessage & { type: 'HOVER_EVENT'; payload: HoverEventPayload })
+  // DevTools → Background → Content
+  | (BaseMessage & { type: 'ACTIVATE_INSPECT'; payload?: undefined })
+  | (BaseMessage & { type: 'DEACTIVATE_INSPECT'; payload?: undefined })
+  // DevTools → Background
+  | (BaseMessage & { type: 'SET_MODE'; payload: { mode: 'local' | 'remote' } })
+  | (BaseMessage & { type: 'RELOAD_THEME'; payload: { themePath?: string } })
+  // Background → DevTools
+  | (BaseMessage & { type: 'THEME_RELOADED'; payload: { success: boolean; message: string } })
+  | (BaseMessage & { type: 'GET_THEME_INFO'; payload?: undefined })
+  | (BaseMessage & { type: 'THEME_INFO'; payload: { connected: boolean; version: string } })
+  // Background ↔ Native Host
+  | (BaseMessage & { type: 'NATIVE_COMMAND'; payload: { command: string; payload: unknown } })
+  | (BaseMessage & { type: 'NATIVE_RESPONSE'; payload: { result?: unknown; error?: unknown } })
+  | (BaseMessage & { type: 'NATIVE_NOTIFICATION'; payload: { method: string; params: unknown } })
+  // Native Host → Background (watch events)
+  | (BaseMessage & { type: 'WATCH_EVENT'; payload: WatchEventPayload });
+
+export interface PageDetectionPayload {
+  pageType: 'storefront' | 'admin_themes' | 'checkout' | 'unknown';
+  confidence: 'high' | 'medium' | 'low';
+  detectionMethod: 'meta_tag' | 'url_pattern' | 'global_var' | 'fallback';
+  nuvemshopId?: string;
+}
+
+export interface HoverEventPayload {
+  liquidFile: string;
+  confidence: 'high' | 'medium' | 'low';
+  mappingMethod: 'data-liquid-file' | 'data-section-id' | 'data-block-id' | 'heuristic' | 'unknown';
+  elementTag: string;
+  elementClasses: string[];
+  elementId?: string;
+  boundingRect: { top: number; left: number; width: number; height: number };
+}
+
+export interface WatchEventPayload {
+  type: 'change' | 'error' | 'ready';
+  file?: string;
+  message?: string;
+  timestamp: number;
+}
+
+export type MessagePayload<T extends ExtensionMessage['type']> = 
+  Extract<ExtensionMessage, { type: T }>['payload'];
+
+export function createMessage<T extends ExtensionMessage['type']>(
+  type: T,
+  payload: MessagePayload<T>,
+  source?: BaseMessage['source']
+): Extract<ExtensionMessage, { type: T }> {
+  return {
+    type,
+    payload,
+    correlationId: crypto.randomUUID(),
+    timestamp: Date.now(),
+    source,
+  } as Extract<ExtensionMessage, { type: T }>;
+}
 ```
 
-**Request/Response Pattern**:
-```typescript
-export interface Request<TPayload, TResponse> {
-  readonly type: 'request';
-  readonly method: string;
-  readonly params: TPayload;
-  readonly correlationId: string; // matches envelope.correlationId
-}
-
-export interface Response<TResponse> {
-  readonly type: 'response';
-  readonly correlationId: string; // matches request.correlationId
-  readonly result?: TResponse;
-  readonly error?: DomainError;
-}
-```
-
-**Timeout Handling**: Background SW tracks pending requests. Default timeout: 5s. On timeout → `Err({ _tag: 'MessageTimeout', correlationId, target })`.
+**Timeout Handling**: Background SW tracks pending requests. Default timeout: 30s. On timeout → `Err({ _tag: 'MessageTimeout', correlationId, target })`.
 
 **Traceability**: "Toda comunicación entre módulos debe estar tipada", "Cohesión alta y acoplamiento bajo"
 
 ---
 
 ### FR-CC-03: Dependency Injection — Lightweight Container
+
 **Description**: Constructor-based DI container for resolving Port interfaces to Adapters per context (background, panel, native-host).
 
-**Container Interface**:
+**Canonical Container** (from `src/shared/di.ts`):
 ```typescript
 // src/shared/di.ts
+export type Token<T> = string & { readonly __brand: unique symbol };
+
+export function createToken<T>(name: string): Token<T> {
+  return name as Token<T>;
+}
+
 export interface Container {
-  register<T>(token: Token<T>, factory: () => T): void;
+  register<T>(token: Token<T>, factory: (container: Container) => T): void;
+  registerInstance<T>(token: Token<T>, instance: T): void;
   resolve<T>(token: Token<T>): T;
-  resolveAsync<T>(token: Token<T>): Promise<T>;
+  has(token: Token<unknown>): boolean;
 }
 
-export interface Token<T> {
-  readonly name: string;
-  readonly type: new (...args: any[]) => T; // for debugging
-}
+export function createContainer(): Container;
+```
 
-// Usage (Background SW):
+**Usage** (Background SW):
+```typescript
+import { createContainer, createToken } from '@/shared/di';
+import { StoragePort } from '@/shared/ports/StoragePort';
+import { NativeHostPort } from '@/shared/ports/NativeHostPort';
+import { MessagingPort } from '@/shared/ports/MessagingPort';
+
 const container = createContainer();
-container.register(StoragePort, () => new ChromeStorageAdapter());
-container.register(NativeHostPort, () => new NativeHostClient());
-container.register(MessageRouter, () => new MessageRouter(container.resolve(StoragePort)));
+const StoragePortToken = createToken<StoragePort>('StoragePort');
+const NativeHostPortToken = createToken<NativeHostPort>('NativeHostPort');
+const MessagingPortToken = createToken<MessagingPort>('MessagingPort');
 
-// Panel context:
-const panelContainer = createContainer();
-panelContainer.register(StoragePort, () => new ChromeStorageAdapter());
-panelContainer.register(ThemeService, () => new ThemeService(panelContainer.resolve(StoragePort)));
+container.register(StoragePortToken, () => new ChromeStorageAdapter());
+container.register(NativeHostPortToken, () => new NativeHostClient());
+container.register(MessagingPortToken, () => new ChromeMessagingAdapter());
+// MessageRouter receives StoragePort via DI
 ```
 
 **Per-Context Registrations**: Each context (background, panel, native-host) gets its own container with context-appropriate adapters.
@@ -131,8 +196,10 @@ panelContainer.register(ThemeService, () => new ThemeService(panelContainer.reso
 ---
 
 ### FR-CC-04: Structured Logging
+
 **Description**: Centralized logger with correlation ID propagation, context enrichment, and level filtering.
 
+**Canonical Logger** (from `src/shared/logger.ts`):
 ```typescript
 // src/shared/logger.ts
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -153,12 +220,14 @@ export interface Logger {
   error(msg: string, error?: Error, meta?: Record<string, unknown>): void;
   child(bindings: Record<string, unknown>): Logger; // adds context
 }
-```
 
-**Implementations**:
-- **Background/Panel/Content**: `ConsoleLogger` (browser console, structured JSON)
-- **Native Host**: `FileLogger` (writes JSONL to `~/.tiendanube-devtools/logs/`)
-- **Test**: `MemoryLogger` (in-memory buffer for assertions)
+// Transports (implemented in shared, used by all adapters)
+export class ConsoleLogger implements Logger { /* ... */ }  // Panel, Background, Content
+export class FileLogger implements Logger { /* ... */ }     // Native Host (writes JSONL)
+export class MemoryLogger implements Logger { /* ... */ }   // Tests (in-memory buffer)
+
+export function createLogger(context: string, transport?: 'console' | 'file' | 'memory'): Logger;
+```
 
 **Correlation**: `logger.child({ correlationId })` auto-propagates through message handlers.
 
@@ -167,16 +236,15 @@ export interface Logger {
 ---
 
 ### FR-CC-05: Security — CSP, Permissions, Origin Validation
+
 **Description**: Extension follows principle of least privilege.
 
 **CSP** (DevTools panel):
 ```
-script-src 'self' 'wasm-unsafe-eval'; // Preact needs eval for dev, production precompiled
-style-src 'self';                      // NO 'unsafe-inline' — CSS Modules + external stylesheets
-connect-src 'self' https://*.tiendanube.com https://*.nuvemshop.com.br;
-img-src 'self' data: blob:;
-font-src 'self' data:;
+script-src 'self'; object-src 'self'; style-src 'self';
 ```
+- NO `'unsafe-inline'` for styles — CSS Modules + external stylesheets
+- NO `eval` — Preact precompiled for production
 
 **Permissions** (Manifest V3):
 ```json
@@ -209,6 +277,7 @@ function validateOrigin(port: chrome.runtime.Port): boolean {
 ---
 
 ### FR-CC-06: Performance — Budgets & Patterns
+
 **Description**: Hard budgets enforced in CI; patterns documented.
 
 **Budgets** (CI gate):
@@ -229,56 +298,6 @@ function validateOrigin(port: chrome.runtime.Port): boolean {
 - Reuse `MessagePort` connections (long-lived)
 
 **Traceability**: "Funciones cortas", "Métodos con una única responsabilidad", "Alta cohesión"
-
----
-
-## Non-Functional Requirements
-
-### NFR-CC-007: Message Queue v2 (Future)
-
-For the scaffold, the `MessageRouter` handles basic routing. A full `MessageQueue` with retry/backoff/dead-letter is deferred to a follow-up change.
-
-**Planned Interface**:
-```typescript
-// src/shared/messageQueue.ts (future)
-interface MessageQueue {
-  enqueue<T>(message: Envelope<T>): Promise<Result<void, DomainError>>;
-  dequeue(): Promise<Envelope<unknown> | null>;
-  deadLetter: Envelope<unknown>[];
-  retryPolicy: RetryPolicy;
-}
-```
-
-**Scope**: Background SW message reliability, native host command queuing.
-
----
-
-### NFR-CC-008: Command Bus v2 (Future)
-
-The `CommandBus` in `shared/command.ts` provides basic dispatch. Advanced features (pipeline behaviors, saga orchestration, compensation) are deferred.
-
-**Planned Middleware**:
-- `LoggingMiddleware` — structured command logging
-- `TimingMiddleware` — latency tracking
-- `RetryMiddleware` — automatic retry with backoff
-- `CircuitBreakerMiddleware` — failure isolation
-
----
-
-### NFR-CC-009: Performance Budget Enforcement
-
-Hard budgets enforced in CI for all bundles:
-
-| Metric | Budget | Enforcement |
-|--------|--------|-------------|
-| Panel bundle (gz) | ≤ 50 KB | `esbuild --analyze` + CI check |
-| Service Worker (gz) | ≤ 15 KB | Same |
-| Content Script (gz) | ≤ 10 KB | Same |
-| Native Host binary | ≤ 8 MB | `ls -lh` in CI |
-| Cold start (panel mount) | ≤ 200 ms | Lighthouse CI |
-| Message round-trip | ≤ 50 ms (local) | Integration test |
-
-**Traceability**: Project policy — Performance budgets (FR-POL-019).
 
 ---
 
@@ -335,9 +354,9 @@ interface MessagePort {
 }
 
 interface IMessageBus {
-  send<T>(target: MessageSource, action: string, params: T): Promise<Result<unknown, AppError>>;
+  send<T>(target: MessageSource, action: string, params: T): Promise<Result<unknown, DomainError>>;
   broadcast(action: string, data: unknown): void;
-  on<T>(action: string, handler: (params: T) => Promise<Result<unknown, AppError>>): void;
+  on<T>(action: string, handler: (params: T) => Promise<Result<unknown, DomainError>>): void;
   off(action: string): void;
 }
 ```
@@ -414,62 +433,8 @@ interface LogContext {
 | `fp-ts` | ^2.16 | Result/Either/Option/TaskEither (optional — local `Result` preferred) |
 | `uuid` | ^9.0 | Correlation IDs (`crypto.randomUUID()` preferred) |
 | `@types/chrome` | ^0.0.258 | Chrome API types |
+| `zod` | ^3.23 | Schema validation (config, messages) |
 
 ---
 
-## 6. Test Scenarios
-
-### Unit (Vitest)
-| Test ID | Description | Coverage Target |
-|---------|-------------|-----------------|
-| UT-CC-01 | `Result` map/flatMap/match/unwrapOr laws | 100% |
-| UT-CC-02 | Correlation ID generation uniqueness | 100% |
-| UT-CC-03 | DI container singleton vs transient lifecycle | 100% |
-| UT-CC-04 | Logger child context merging | 100% |
-| UT-CC-05 | Message envelope serialization round-trip | 100% |
-| UT-CC-06 | Retry logic (exponential backoff, max attempts) | 100% |
-| UT-CC-07 | Origin validation (allowed/blocked) | 100% |
-| UT-CC-08 | Input sanitization (XSS vectors) | 100% |
-
-### Integration
-| Test ID | Description |
-|---------|-------------|
-| IT-CC-01 | Full message round-trip: panel → background → native host → background → panel |
-| IT-CC-02 | DI container resolves all ports in each context (panel, background, native host) |
-| IT-CC-03 | Logger correlation ID propagates across message boundaries |
-| IT-CC-04 | Storage wrapper works in all three contexts (extension SW, panel, content) |
-
-### E2E (Playwright)
-| Test ID | Description |
-|---------|-------------|
-| E2E-CC-01 | Load extension, open DevTools panel, verify no console errors |
-| E2E-CC-02 | Click "Reload Theme" → native host invoked → panel shows success |
-
----
-
-## 7. Traceability Matrix
-
-| Requirement | Architectural Principle | Spec File |
-|-------------|------------------------|-----------|
-| FR-CC-01 | Manejo consistente de errores, Código limpio | 00-architecture-compliance.md |
-| FR-CC-02 | Comunicación tipada, Cohesión alta | 07-shared-core.md (messaging) |
-| FR-CC-03 | Inyección de dependencias, Composición, Open/Closed | 00-architecture-compliance.md |
-| FR-CC-04 | Logging centralizado, Nombres descriptivos | 00-architecture-compliance.md |
-| FR-CC-05 | Seguridad, Menor privilegio | 00-architecture-compliance.md |
-| FR-CC-06 | Funciones cortas, Responsabilidad única | 00-architecture-compliance.md |
-| FR-CC-07 | Message Queue v2 (Future) | 08-cross-cutting.md (NFR-CC-007) |
-| FR-CC-08 | Command Bus v2 (Future) | 08-cross-cutting.md (NFR-CC-008) |
-
----
-
-## 8. Acceptance Criteria (from 09-acceptance-criteria.md)
-
-| AC-ID | Description |
-|-------|-------------|
-| AC-CC-01 | Result pattern used consistently across all modules |
-| AC-CC-02 | Correlation IDs propagate through entire message chain |
-| AC-CC-03 | DI container resolves all ports at startup in each context |
-
----
-
-*End of Spec — Cross-Cutting Concerns*
+*End of Cross-Cutting Concerns Spec*
