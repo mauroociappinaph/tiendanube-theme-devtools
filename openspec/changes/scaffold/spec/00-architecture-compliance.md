@@ -10,13 +10,15 @@
 
 This document maps every architectural principle (from Engram `architecture/principles`) to concrete requirements that the scaffold MUST satisfy. Every file created in the scaffold MUST be traceable to at least one principle below.
 
+**This is the CANONICAL spec for project structure and architectural rules.** All other specs MUST align with this document.
+
 ---
 
 ## Hexagonal Architecture (Ports & Adapters)
 
 ### FR-ARCH-001: Layer Separation
 
-The source tree MUST maintain three distinct layers:
+The source tree MUST maintain these distinct layers:
 
 ```
 src/
@@ -43,17 +45,25 @@ src/
 - THEN the build MUST fail with a module-not-found error
 - ONLY shared types in `shared/` MAY be imported across adapters
 
-### FR-ARCH-002: Port Definitions
+### FR-ARCH-002: Port Definitions (Canonical)
 
-The `src/shared/` layer MUST define port interfaces (TypeScript types/interfaces) before any adapter implementation.
+The `src/shared/` layer MUST define port interfaces **before** any adapter implementation. These are the **canonical** port definitions — all adapters MUST implement these exact interfaces.
+
+**Canonical Port Interfaces** (defined in `src/shared/ports/` — see `07-shared-core.md` for full definitions):
+
+| Port | File | Purpose |
+|------|------|---------|
+| `StoragePort` | `StoragePort.ts` | Interface for chrome.storage access |
+| `NativeHostPort` | `NativeHostPort.ts` | Interface for native messaging host communication |
+| `MessagingPort` | `MessagingPort.ts` | Interface for chrome.runtime messaging |
 
 **Traceability**: Hexagonal — ports before adapters.
 
 #### Scenario: Shared types exist before adapter code
 
 - GIVEN the scaffold is generated
-- WHEN inspecting `src/shared/messaging.ts`
-- THEN it MUST define `MessagePayload`, `MessageSender`, and `MessageResponse` interfaces
+- WHEN inspecting `src/shared/ports/`
+- THEN `StoragePort.ts`, `NativeHostPort.ts`, `MessagingPort.ts` MUST exist with complete interfaces
 - AND adapters MUST reference these types, not define their own
 
 ---
@@ -89,7 +99,7 @@ All cross-module dependencies MUST use constructor injection. No module SHALL in
 
 - GIVEN `src/background/service-worker.ts`
 - WHEN it needs to send a message to the native host
-- THEN it MUST receive a `NativeMessagingPort` via constructor or factory parameter
+- THEN it MUST receive a `NativeHostPort` via constructor or factory parameter
 - AND MUST NOT import and instantiate `chrome.runtime.connectNative` directly
 
 ### FR-ARCH-005: Open/Closed
@@ -276,11 +286,25 @@ The scaffold MUST define clear extension points for future additions:
 
 ---
 
+## Bundle Size Budgets (CANONICAL)
+
+| Artifact | Max Size (gzipped) | Enforcement |
+|----------|-------------------|-------------|
+| Service Worker (`dist/background/service-worker.js`) | **15 KB** | CI: `esbuild --analyze` |
+| DevTools Panel (`dist/devtools/panel/*.js`) | **50 KB** | CI: `esbuild --analyze` |
+| Content Script (`dist/content/inspector.js`) | **10 KB** | CI: `esbuild --analyze` |
+| Native Host Binary (`dist/native-host/host.node.js`) | **8 MB** | CI: file size check |
+| Any single source file | **300 lines** | ESLint `max-lines` rule |
+
+**Traceability**: Performance budgets from exploration decisions (Preact over React, esbuild speed).
+
+---
+
 ## Summary
 
 | Principle | FR/NFR Count | Key Files |
 |-----------|-------------|-----------|
-| Hexagonal (Ports & Adapters) | 2 FR | `src/shared/`, all adapters |
+| Hexagonal (Ports & Adapters) | 2 FR | `src/shared/ports/`, all adapters |
 | SOLID (SRP, DIP, OCP) | 3 FR | All files |
 | DRY | 1 FR + 1 NFR | `src/shared/utils.ts`, `src/shared/storage.ts` |
 | High Cohesion, Low Coupling | 2 FR | Import graph |
@@ -289,6 +313,28 @@ The scaffold MUST define clear extension points for future additions:
 | Testability | 2 FR | `vitest.config.ts`, test files |
 | Maintainability | 1 NFR | Code style |
 | Scalability | 1 FR | Extension points |
+| **Bundle Budgets** | **1 NFR** | **CI gates, esbuild config** |
+| **Git Flow & Branching** | **2 FR** | `.github/`, branch naming |
+| **Conventional Commits** | **1 FR** | `commitlint`, PR titles |
+| **PR Requirements** | **1 FR** | PR template, CODEOWNERS |
+| **GitHub Actions** | **1 FR** | `.github/workflows/*.yml` |
+| **Branch Protection** | **1 FR** | GitHub settings |
+| **Automated Code Review** | **1 FR** | CodeRabbit config |
+| **Dependency Management** | **1 FR** | Dependabot config |
+| **Semantic Versioning** | **1 FR** | `package.json`, tags |
+| **Changelog Generation** | **1 FR** | `standard-version`/`release-it` |
+| **GitHub Releases** | **1 FR** | Release workflow, artifacts |
+| **Env/Secrets Security** | **5 FR** | `.env.example`, GitHub Secrets, native host |
+| **Chrome MV3 Security** | **1 FR** | `manifest.ts`, native messaging |
+| **Native Host Security** | **1 FR** | `src/native-host/` |
+| **GitHub Actions Secrets** | **1 FR** | Release workflow |
+| **Env Validation** | **1 FR** | `scripts/validate-env.ts` |
+| **Chrome Permissions** | **1 FR** | `manifest.ts` |
+| **Documentation Maintenance** | **1 FR** | `README.md`, PR template |
+| **ADR** | **1 FR** | `docs/architecture/ADR-*.md` |
+| **Quality Gates** | **1 FR** | CI workflows |
+| **Agent Self-Evaluation** | **1 FR** | PR template |
+| **SDD Artifact Validation** | **1 FR** | Checklist per phase |
 
 ---
 
@@ -312,11 +358,13 @@ The repository MUST follow Git Flow with these branches:
 **Traceability**: Project policy — Git Flow & Branching Strategy.
 
 #### Scenario: Branch naming enforced
+
 - GIVEN a developer creates a branch
 - WHEN pushing to origin
 - THEN branch name MUST match `^(feature|fix|refactor|docs|test|chore)/[a-z0-9-]+$`
 
 #### Scenario: No direct commits to protected branches
+
 - GIVEN a commit is pushed to `main` or `develop`
 - WHEN not via PR merge
 - THEN the push MUST be rejected by branch protection
@@ -340,11 +388,13 @@ Every commit message MUST follow Conventional Commits 1.0.0:
 **Traceability**: Project policy — Conventional Commits.
 
 #### Scenario: Commit message validation
+
 - GIVEN a commit message
 - WHEN validated by commitlint
 - THEN it MUST pass `commitlint --strict`
 
 #### Scenario: Scopes for this project
+
 | Scope | Area |
 |-------|------|
 | `bg` | Background Service Worker |
@@ -377,6 +427,7 @@ All changes reaching `develop` or `main` MUST go through a Pull Request:
 **Traceability**: Project policy — Pull Request Requirements.
 
 #### Scenario: PR structure enforced
+
 - GIVEN a PR is opened
 - WHEN validated
 - THEN it MUST have: clear title, description, linked issue, test plan, updated docs if applicable
@@ -749,9 +800,9 @@ If a file expected by the spec does NOT exist on disk:
 
 ---
 
-## Project Structure (Concrete)
+## Project Structure (CANONICAL)
 
-The scaffold MUST produce this exact directory structure:
+The scaffold MUST produce this exact directory structure. **This is the single source of truth.**
 
 ```
 src/
@@ -761,7 +812,7 @@ src/
 ├── background/                    # Adapter: Chrome Service Worker
 │   ├── service-worker.ts          # Entry point
 │   ├── MessageRouter.ts           # Routes panel↔content↔native
-│   ├── NativeHostClient.ts        # Adapter for NativeHostPort (stdio JSON-RPC)
+│   ├── NativeHostClient.ts        # Adapter for NativeHostPort
 │   ├── ChromeStorageAdapter.ts    # Adapter for StoragePort
 │   └── alarms.ts                  # Theme reload check alarm
 ├── devtools/                      # Adapter: DevTools Panel (Preact)
@@ -786,28 +837,44 @@ src/
 │       ├── styles.module.css      # CSS Modules for components
 │       └── types.ts               # Panel-specific types
 ├── content/                       # Adapter: Content Script
-│   ├── inspector.ts               # Entry + hover logic
-│   ├── LiquidFileDetector.ts      # Heuristics for Liquid file names
-│   ├── BadgeManager.ts            # Badge DOM injection + cleanup
-│   └── Throttle.ts                # 150ms debounce utility
+│   ├── inspector.ts               # Entry point
+│   ├── InspectorController.ts     # Orchestrator + state machine
+│   ├── InspectorStateMachine.ts   # State machine: idle→detecting→ready→inspecting→cleaning
+│   ├── PageDetector.ts            # Page classification (storefront/admin/checkout/unknown)
+│   ├── LiquidMapper.ts            # Pure function: element → LiquidFileMapping
+│   ├── HoverHandler.ts            # Throttled hover (150ms), IntersectionObserver, RAF positioning
+│   ├── BadgeManager.ts            # Badge injection, positioning, cleanup (interface + impl)
+│   ├── SPANavigationHandler.ts    # MutationObserver + history.pushState patching
+│   ├── MessageHandler.ts          # Message routing: ACTIVATE/DEACTIVATE_INSPECT, PAGE_DETECTED, HOVER_EVENT
+│   └── Throttle.ts                # 150ms debounce utility + RAF helpers
 ├── native-host/                   # Adapter: Node.js Native Messaging Host
 │   ├── main.ts                    # CLI entry: health, push, preview, watch
-│   ├── CommandDispatcher.ts       # JSON-RPC 2.0 dispatch
-│   ├── NubeCliExecutor.ts         # Spawns nube-cli, timeout, parsing
-│   ├── StdioTransport.ts          # stdin/stdout JSON-RPC framing
-│   ├── FileStorageAdapter.ts      # StoragePort adapter (file-based)
+│   ├── StdioTransport.ts          # stdin/stdout JSON-RPC 2.0 framing
+│   ├── CommandBus.ts              # Handler registry + middleware pipeline
+│   ├── config.ts                  # HostConfigSchema (Zod) + loadHostConfig()
+│   ├── validate.ts                # Path + arg security validators
+│   ├── CliExecutor.ts             # execFile wrapper (timeout, no shell)
+│   ├── commands/
+│   │   ├── ThemePushCommand.ts
+│   │   ├── ThemePreviewCommand.ts
+│   │   ├── ThemeWatchCommand.ts
+│   │   └── SystemHealthCommand.ts
 │   ├── manifest.json              # Native messaging host manifest
-│   └── package.json               # Minimal deps (Node built-ins only)
+│   └── package.json               # Minimal deps (Node built-ins + zod)
 └── shared/                        # Domain / Core (zero external deps at runtime)
     ├── result.ts                  # Result/Either pattern (Ok/Err)
     ├── errors.ts                  # DomainError discriminated union
-    ├── messaging.ts               # Envelope, Request, Response types
+    ├── messaging.ts               # Envelope, Request, Response types (canonical)
     ├── di.ts                      # Lightweight DI container
-    ├── logger.ts                  # Logger interface + ConsoleLogger/FileLogger
+    ├── logger.ts                  # Logger interface + ConsoleLogger/FileLogger/MemoryLogger
+    ├── config.ts                  # ExtensionConfig + HostConfig + loadConfig()
+    ├── messageRegistry.ts         # Central message handler registry
+    ├── command.ts                 # Command pattern interfaces
+    ├── validation.ts              # Zod schemas + validate()
     ├── ports/
-    │   ├── StoragePort.ts         # Interface for chrome.storage
-    │   ├── MessagingPort.ts       # Interface for chrome.runtime
-    │   └── NativeHostPort.ts      # Interface for native host
+    │   ├── StoragePort.ts         # Interface for chrome.storage (canonical)
+    │   ├── MessagingPort.ts       # Interface for chrome.runtime (canonical)
+    │   └── NativeHostPort.ts      # Interface for native host (canonical)
     ├── storage.ts                 # Chrome storage wrapper (Result-based)
     ├── types/
     │   └── chrome.d.ts            # Chrome API augmentations
@@ -820,6 +887,7 @@ Root config files:
 ├── tsconfig.native-host.json
 ├── esbuild.config.mjs
 ├── vitest.config.ts
+├── vitest.native-host.config.ts
 ├── .eslintrc.cjs
 ├── .prettierrc
 ├── .prettierignore
@@ -897,39 +965,19 @@ Root config files:
 
 ---
 
-## Summary Table (Updated)
+## Coverage Thresholds (SINGLE SOURCE OF TRUTH)
 
-| Principle | FR/NFR Count | Key Files |
-|-----------|-------------|-----------|
-| Hexagonal (Ports & Adapters) | 2 FR | `src/shared/`, all adapters |
-| SOLID (SRP, DIP, OCP) | 3 FR | All files |
-| DRY | 1 FR + 1 NFR | `src/shared/utils.ts`, `src/shared/storage.ts` |
-| High Cohesion, Low Coupling | 2 FR | Import graph |
-| TypeScript Strict | 1 FR + 1 NFR | `tsconfig.json`, type definitions |
-| Code Quality | 3 FR | All files |
-| Testability | 2 FR | `vitest.config.ts`, test files |
-| Maintainability | 1 NFR | Code style |
-| Scalability | 1 FR | Extension points |
-| **Git Flow & Branching** | **2 FR** | `.github/`, branch naming |
-| **Conventional Commits** | **1 FR** | `commitlint`, PR titles |
-| **PR Requirements** | **1 FR** | PR template, CODEOWNERS |
-| **GitHub Actions** | **1 FR** | `.github/workflows/*.yml` |
-| **Branch Protection** | **1 FR** | GitHub settings |
-| **Automated Code Review** | **1 FR** | CodeRabbit config |
-| **Dependency Management** | **1 FR** | Dependabot config |
-| **Semantic Versioning** | **1 FR** | `package.json`, tags |
-| **Changelog Generation** | **1 FR** | `standard-version`/`release-it` |
-| **GitHub Releases** | **1 FR** | Release workflow, artifacts |
-| **Env/Secrets Security** | **5 FR** | `.env.example`, GitHub Secrets, native host |
-| **Chrome MV3 Security** | **1 FR** | `manifest.ts`, native messaging |
-| **Native Host Security** | **1 FR** | `src/native-host/` |
-| **GitHub Actions Secrets** | **1 FR** | Release workflow |
-| **Env Validation** | **1 FR** | `scripts/validate-env.ts` |
-| **Chrome Permissions** | **1 FR** | `manifest.ts` |
-| **Documentation Maintenance** | **1 FR** | `README.md`, PR template |
-| **ADR** | **1 FR** | `docs/architecture/ADR-*.md` |
-| **Quality Gates** | **1 FR** | CI workflows |
-| **Agent Self-Evaluation** | **1 FR** | PR template |
-| **SDD Artifact Validation** | **1 FR** | Checklist per phase |
+The following coverage thresholds MUST be met (matching `vitest.config.ts` in `01-root-config.md`):
 
-(End of file - total ~580 lines)
+| Metric | Threshold |
+|--------|-----------|
+| lines | 80% |
+| functions | 80% |
+| branches | 70% |
+| statements | 80% |
+
+These thresholds are enforced by `npm run test:coverage` and the CI pipeline.
+
+---
+
+*End of Architecture Compliance Spec*
