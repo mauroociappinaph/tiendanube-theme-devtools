@@ -10,6 +10,8 @@
 
 Define the Node.js native messaging host that bridges the Chrome extension with the Tiendanube CLI (`nube-cli`). The host communicates with the extension via Chrome's native messaging protocol (stdin/stdout with 4-byte length prefix), **internally uses JSON-RPC 2.0 for command dispatch**, and exposes a clean `NativeHostPort` interface to the Background adapter. The host is bundled as a standalone binary via esbuild targeting Node.js 20+.
 
+**Key Principle**: The **external contract** between Background SW and Native Host is the **canonical `NativeHostPort` interface from `src/shared/ports/NativeHostPort.ts`** (defined in `07-shared-core.md`). JSON-RPC 2.0 is **completely encapsulated inside `StdioTransport`** — Background knows nothing about JSON-RPC.
+
 ---
 
 ## Architecture (Hexagonal Compliance)
@@ -41,8 +43,6 @@ Define the Node.js native messaging host that bridges the Chrome extension with 
 │  └─────────────────────┘  └─────────────────────────────────────┘
 └─────────────────────────────────────────────────────────────────┘
 ```
-
-**Key Principle**: Background ↔ Native Host communication uses `NativeHostPort.send<T>(command, payload): Promise<Result<T>>`. **JSON-RPC is completely encapsulated inside `StdioTransport`**. Background knows nothing about JSON-RPC.
 
 ---
 
@@ -262,29 +262,16 @@ export class ThemeService {
 }
 ```
 
-**Command Definitions** (from `shared/messaging.ts`):
+**Command Definitions** (canonical types from `src/shared/messaging.ts` — see `07-shared-core.md`):
 
 ```typescript
-// shared/messaging.ts
-export interface ThemePushCommand {
-  readonly name: 'theme.push';
-  readonly payload: { themePath: string; force?: boolean };
-}
-
-export interface ThemePreviewCommand {
-  readonly name: 'theme.preview';
-  readonly payload: { themePath: string; port?: number };
-}
-
-export interface ThemeWatchCommand {
-  readonly name: 'theme.watch';
-  readonly payload: { themePath: string; onChange: (event: WatchEvent) => void };
-}
-
-export interface SystemHealthCommand {
-  readonly name: 'system.health';
-  readonly payload: Record<string, never>;
-}
+// These are the command names used in NativeHostPort.send<T>(command, payload)
+// The 'command' parameter maps to these names:
+export type NativeCommandName =
+  | 'theme.push'
+  | 'theme.preview'
+  | 'theme.watch'
+  | 'system.health';
 ```
 
 ---
@@ -485,7 +472,9 @@ function sanitizeArg(arg: string): Result<string, DomainError> {
 
 ## Interface Contracts
 
-### NativeHostPort (Shared)
+### Canonical NativeHostPort (Shared)
+
+**This is the authoritative external contract** — defined in `src/shared/ports/NativeHostPort.ts` (see `07-shared-core.md`):
 
 ```typescript
 // src/shared/ports/NativeHostPort.ts
@@ -496,39 +485,98 @@ export interface NativeHostPort {
   readonly onNotification: (handler: (method: string, params: unknown) => void) => void;
   readonly healthCheck: () => Promise<Result<HealthResult, DomainError>>;
 }
+
+export interface HealthResult {
+  status: 'healthy' | 'degraded' | 'unhealthy';
+  cli?: { path: string; version: string };
+  permissions?: Record<string, boolean>;
+  timestamp: number;
+}
 ```
 
-### Background Adapter
+### Background Adapter (Implements NativeHostPort)
 
 ```typescript
 // src/background/NativeHostClient.ts
 export class NativeHostClient implements NativeHostPort {
   private port: chrome.runtime.Port | null = null;
-  private pending = new Map<string, { resolve: Function; reject: Function }>();
+  private pending = new Map<string, { resolve: (value: Result<any, DomainError>) => void; reject: (err: DomainError) => void }>();
+  private notificationHandler?: (method: string, params: unknown) => void;
 
   async connect(): Promise<Result<void, DomainError>> {
-    this.port = chrome.runtime.connectNative('com.tiendanube.theme-devtools');
-    this.port.onMessage.addListener(this.onMessage.bind(this));
-    this.port.onDisconnect.addListener(this.onDisconnect.bind(this));
-    return ok(undefined);
+    try {
+      this.port = chrome.runtime.connectNative('com.tiendanube.theme-devtools');
+      this.port.onMessage.addListener(this.onMessage.bind(this));
+      this.port.onDisconnect.addListener(this.onDisconnect.bind(this));
+      return ok(undefined);
+    } catch (e) {
+      return err({ _tag: 'NativeHostUnavailable', reason: String(e) });
+    }
+  }
+
+  async disconnect(): Promise<void> {
+    this.port?.disconnect();
+    this.port = null;
+    this.pending.clear();
   }
 
   async send<T>(command: string, payload: unknown): Promise<Result<T, DomainError>> {
-    const id = crypto.randomUUID();
-    const message = { type: 'NATIVE_COMMAND', id, command, payload };
-    return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+    if (!this.port) {
+      return err({ _tag: 'NativeHostUnavailable', reason: 'Not connected' });
+    }
+
+    const correlationId = crypto.randomUUID();
+    const message = { type: 'NATIVE_COMMAND', id: correlationId, command, payload };
+
+    return new Promise((resolve) => {
+      this.pending.set(correlationId, { resolve: resolve as any, reject: () => {} });
       this.port!.postMessage(message);
-      // Timeout 30s
+
+      // 30 second timeout
       setTimeout(() => {
-        if (this.pending.has(id)) {
-          this.pending.delete(id);
-          reject({ _tag: 'MessageTimeout' });
+        if (this.pending.has(correlationId)) {
+          this.pending.delete(correlationId);
+          resolve(err({ _tag: 'MessageTimeout', correlationId }));
         }
       }, 30000);
     });
   }
-  // ...
+
+  onNotification(handler: (method: string, params: unknown) => void): void {
+    this.notificationHandler = handler;
+  }
+
+  async healthCheck(): Promise<Result<HealthResult, DomainError>> {
+    return this.send('system.health', {});
+  }
+
+  private onMessage(message: any): void {
+    // Handle NATIVE_RESPONSE
+    if (message.type === 'NATIVE_RESPONSE' && message.payload.correlationId) {
+      const { correlationId, result, error } = message.payload;
+      const pending = this.pending.get(correlationId);
+      if (pending) {
+        this.pending.delete(correlationId);
+        if (error) {
+          pending.resolve(err({ _tag: 'NativeHostError', code: error.code, message: error.message }));
+        } else {
+          pending.resolve(ok(result));
+        }
+      }
+    }
+    // Handle NATIVE_NOTIFICATION (watch events)
+    else if (message.type === 'NATIVE_NOTIFICATION' && this.notificationHandler) {
+      this.notificationHandler(message.payload.method, message.payload.params);
+    }
+  }
+
+  private onDisconnect(): void {
+    this.port = null;
+    for (const [, { resolve }] of this.pending) {
+      resolve(err({ _tag: 'NativeHostUnavailable', reason: 'Port disconnected' }));
+    }
+    this.pending.clear();
+  }
 }
 ```
 
