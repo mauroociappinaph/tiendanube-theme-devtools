@@ -21,9 +21,9 @@
 |-----------------|-------------------------------------------------|
 | Platform        | Chrome Extension (Manifest V3)                  |
 | Languages       | TypeScript (primary), JavaScript, CSS           |
-| Bundler         | Not configured (pending setup)                  |
-| Build toolchain | Not configured                                  |
-| Package manager | Not configured (expected: npm or pnpm)          |
+| Bundler         | esbuild (multi-entry, same tool for extension + native host)            |
+| Build toolchain | esbuild + TypeScript + Vitest + ESLint + Prettier                       |
+| Package manager | npm (workspaces for extension + native-host)                            |
 
 ### Architecture (from README)
 
@@ -71,7 +71,8 @@ None detected. No `package.json`, test config, or runner binary found.
 | Type checker | ❌        | —        |
 | Formatter    | ❌        | —        |
 
-**Note**: All quality tools are TBD. Recommended initial setup: TypeScript `tsc` for type checking, ESLint + Prettier for linting/formatting, Vitest for testing.
+**Note**: Stack configured in specs: TypeScript (tsc) for type checking, esbuild for bundling,
+ESLint + Prettier for linting/formatting, Vitest for testing.
 
 ## Persistence
 

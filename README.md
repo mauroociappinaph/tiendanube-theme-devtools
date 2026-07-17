@@ -46,20 +46,71 @@ src/
 │   ├── devtools.ts
 │   └── panel/
 │       ├── Panel.tsx
+│       ├── App.tsx
+│       ├── store/
+│       │   └── panelStore.ts
 │       ├── components/
+│       │   ├── LocalRemoteToggle.tsx
+│       │   ├── ReloadThemeButton.tsx
+│       │   ├── InspectModeToggle.tsx
+│       │   ├── StatusBar.tsx
+│       │   └── ErrorBoundary.tsx
 │       ├── hooks/
-│       └── styles.css
+│       │   ├── useChromeRuntime.ts
+│       │   ├── useConnectionState.ts
+│       │   └── useNativeHostStatus.ts
+│       ├── styles.css
+│       └── types.ts
 ├── content/
-│   └── inspector.ts
+│   ├── inspector.ts
+│   ├── InspectorController.ts
+│   ├── InspectorStateMachine.ts
+│   ├── PageDetector.ts
+│   ├── LiquidMapper.ts
+│   ├── HoverHandler.ts
+│   ├── BadgeManager.ts
+│   ├── SPANavigationHandler.ts
+│   ├── MessageHandler.ts
+│   └── Throttle.ts
 ├── native-host/
 │   ├── main.ts
+│   ├── CommandBus.ts
+│   ├── StdioTransport.ts
+│   ├── CliExecutor.ts
+│   ├── config.ts
+│   ├── validate.ts
 │   ├── manifest.json
 │   └── package.json
-└── shared/
-    ├── messaging.ts
-    ├── storage.ts
-    ├── types/
-    └── utils.ts
+├── shared/
+│   ├── result.ts
+│   ├── errors.ts
+│   ├── messaging.ts
+│   ├── storage.ts
+│   ├── logger.ts
+│   ├── config.ts
+│   ├── validation.ts
+│   ├── messageRegistry.ts
+│   ├── command.ts
+│   ├── di.ts
+│   ├── utils.ts
+│   ├── ports/
+│   │   ├── StoragePort.ts
+│   │   ├── MessagingPort.ts
+│   │   └── NativeHostPort.ts
+│   └── types/
+│       ├── chrome.d.ts
+│       └── global.d.ts
+├── domain/
+│   ├── entities/
+│   ├── valueObjects/
+│   └── services/
+├── scripts/
+│   ├── build-host.mjs
+│   ├── build-zip.mjs
+│   └── validate-env.js
+└── tests/
+    ├── integration/
+    └── e2e/
 ```
 
 The extension follows Hexagonal Architecture:

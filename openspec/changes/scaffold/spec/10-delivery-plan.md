@@ -302,7 +302,7 @@ Register DevTools panel, render Preact UI with stub components for: Local/Remote
 | `src/devtools/panel/types.ts` | Panel-specific types | 15 |
 
 ### Acceptance Criteria
-- AC-DP-01..07, **AC-DP-09-01..07** (panel store)
+- AC-DP-01..07, **AC-DP-08..13** (panel store)
 
 ### CI Gates (extends PR #1-2)
 - Build produces `dist/devtools/devtools.html`, `dist/devtools/panel/*.js`
