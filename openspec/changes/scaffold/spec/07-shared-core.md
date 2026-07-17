@@ -10,16 +10,281 @@
 
 Define the shared modules used by ALL adapters (background, devtools, content, native-host). These modules live in `src/shared/` and form the domain/core layer of the hexagonal architecture. They MUST have zero external runtime dependencies and MUST be stateless (pure functions + type definitions).
 
+**This spec is the SINGLE SOURCE OF TRUTH for all port interfaces, message types, and shared patterns.** All other specs MUST import types from here and NOT redefine them.
+
+---
+
+## Canonical Port Interfaces
+
+### StoragePort (`src/shared/ports/StoragePort.ts`)
+
+```typescript
+// src/shared/ports/StoragePort.ts
+export interface StorageSchema {
+  mode: 'local' | 'remote';
+  themePath: string;
+  inspectMode: boolean;
+  schemaVersion: string;
+}
+
+export type StorageArea = 'local' | 'sync' | 'session';
+
+export interface StoragePort {
+  get<T extends keyof StorageSchema>(
+    keys: T[],
+    area?: StorageArea
+  ): Promise<Pick<StorageSchema, T> | null>;
+
+  set<T extends keyof StorageSchema>(
+    data: Pick<StorageSchema, T>,
+    area?: StorageArea
+  ): Promise<void>;
+
+  remove(keys: string[], area?: StorageArea): Promise<void>;
+  clear(area?: StorageArea): Promise<void>;
+
+  observe<T extends keyof StorageSchema>(
+    key: T,
+    callback: (newValue: StorageSchema[T] | null, oldValue?: StorageSchema[T] | null) => void
+  ): () => void; // returns unsubscribe function
+
+  migrate(
+    fromVersion: string,
+    toVersion: string,
+    migrationFn: (oldData: Record<string, unknown>) => Record<string, unknown>
+  ): Promise<void>;
+}
+```
+
+**Traceability**: Hexagonal — port interface for all storage access. Implemented by `ChromeStorageAdapter` (background) and `FileStorageAdapter` (native-host).
+
+---
+
+### NativeHostPort (`src/shared/ports/NativeHostPort.ts`)
+
+```typescript
+// src/shared/ports/NativeHostPort.ts
+export interface NativeHostPort {
+  connect(): Promise<Result<void, DomainError>>;
+  disconnect(): Promise<void>;
+  send<T>(command: string, payload: unknown): Promise<Result<T, DomainError>>;
+  onNotification(handler: (method: string, params: unknown) => void): void;
+  healthCheck(): Promise<Result<HealthResult, DomainError>>;
+}
+
+export interface HealthResult {
+  status: 'healthy' | 'degraded' | 'unhealthy';
+  cli?: { path: string; version: string };
+  permissions?: Record<string, boolean>;
+  timestamp: number;
+}
+```
+
+**Traceability**: Hexagonal — port interface for native messaging host communication. Implemented by `NativeHostClient` (background). Native host exposes JSON-RPC 2.0 internally but THIS is the external contract.
+
+---
+
+### MessagingPort (`src/shared/ports/MessagingPort.ts`)
+
+```typescript
+// src/shared/ports/MessagingPort.ts
+export interface MessagingPort {
+  send<T>(message: ExtensionMessage): Promise<T>;
+  onMessage(handler: (message: ExtensionMessage, sender: chrome.runtime.MessageSender) => void): void;
+  connect(): Promise<void>;
+  disconnect(): void;
+}
+```
+
+**Traceability**: Hexagonal — port interface for Chrome runtime messaging.
+
+---
+
+### DI Container (`src/shared/di.ts`)
+
+```typescript
+// src/shared/di.ts
+export type Token<T> = string & { readonly __brand: unique symbol };
+
+export function createToken<T>(name: string): Token<T> {
+  return name as Token<T>;
+}
+
+export interface Container {
+  register<T>(token: Token<T>, factory: (container: Container) => T): void;
+  registerInstance<T>(token: Token<T>, instance: T): void;
+  resolve<T>(token: Token<T>): T;
+  has(token: Token<unknown>): boolean;
+}
+
+export function createContainer(): Container;
+```
+
+**Usage**:
+```typescript
+const container = createContainer();
+const StoragePortToken = createToken<StoragePort>('StoragePort');
+container.register(StoragePortToken, () => new ChromeStorageAdapter());
+const storage = container.resolve(StoragePortToken);
+```
+
+---
+
+## Result Pattern (`src/shared/result.ts`)
+
+```typescript
+// src/shared/result.ts
+export type Result<T, E> = Ok<T> | Err<E>;
+
+export interface Ok<T> {
+  readonly _tag: 'Ok';
+  readonly value: T;
+}
+
+export interface Err<E> {
+  readonly _tag: 'Err';
+  readonly error: E;
+}
+
+export function ok<T>(value: T): Ok<T> {
+  return { _tag: 'Ok', value };
+}
+
+export function err<E>(error: E): Err<E> {
+  return { _tag: 'Err', error };
+}
+
+export function isOk<T, E>(result: Result<T, E>): result is Ok<T> {
+  return result._tag === 'Ok';
+}
+
+export function isErr<T, E>(result: Result<T, E>): result is Err<E> {
+  return result._tag === 'Err';
+}
+
+export function unwrap<T, E>(result: Result<T, E>): T {
+  if (isOk(result)) return result.value;
+  throw result.error;
+}
+
+export function unwrapErr<T, E>(result: Result<T, E>): E {
+  if (isErr(result)) return result.error;
+  throw new Error('Expected Err');
+}
+```
+
+---
+
+## Domain Errors (`src/shared/errors.ts`)
+
+```typescript
+// src/shared/errors.ts
+export type DomainError =
+  | { _tag: 'NotFound'; resource: string; id: string }
+  | { _tag: 'ValidationFailed'; errors: Record<string, string[]> }
+  | { _tag: 'StorageError'; operation: 'get' | 'set' | 'remove' | 'observe'; key: string; cause: unknown }
+  | { _tag: 'MessageTimeout'; correlationId: string }
+  | { _tag: 'MessageSizeExceeded'; size: number; limit: number }
+  | { _tag: 'NativeHostUnavailable'; reason: string }
+  | { _tag: 'NativeHostError'; code: number; message: string }
+  | { _tag: 'CommandNotFound'; command: string }
+  | { _tag: 'PathTraversal'; path: string }
+  | { _tag: 'PathNotAllowed'; path: string; allowedBases: string[] }
+  | { _tag: 'ParamTooLong'; max: number; actual: number }
+  | { _tag: 'ForbiddenPattern'; pattern: string; input: string }
+  | { _tag: 'CliExecutionFailed'; command: string; exitCode: number; stderr: string }
+  | { _tag: 'CliTimeout'; command: string; timeoutMs: number }
+  | { _tag: 'InternalError'; message: string; cause?: unknown };
+```
+
+---
+
+## Messaging Types (`src/shared/messaging.ts`)
+
+```typescript
+// src/shared/messaging.ts
+import type { DomainError } from './errors';
+import type { Result } from './result';
+
+export interface BaseMessage {
+  correlationId: string;
+  timestamp: number;
+  source?: 'content' | 'background' | 'devtools' | 'native-host';
+}
+
+export type ExtensionMessage =
+  // Content → Background
+  | (BaseMessage & { type: 'PAGE_DETECTED'; payload: PageDetectionPayload })
+  | (BaseMessage & { type: 'HOVER_EVENT'; payload: HoverEventPayload })
+  // DevTools → Background → Content
+  | (BaseMessage & { type: 'ACTIVATE_INSPECT'; payload?: undefined })
+  | (BaseMessage & { type: 'DEACTIVATE_INSPECT'; payload?: undefined })
+  // DevTools → Background
+  | (BaseMessage & { type: 'SET_MODE'; payload: { mode: 'local' | 'remote' } })
+  | (BaseMessage & { type: 'RELOAD_THEME'; payload: { themePath?: string } })
+  // Background → DevTools
+  | (BaseMessage & { type: 'THEME_RELOADED'; payload: { success: boolean; message: string } })
+  | (BaseMessage & { type: 'GET_THEME_INFO'; payload?: undefined })
+  | (BaseMessage & { type: 'THEME_INFO'; payload: { connected: boolean; version: string } })
+  // Background ↔ Native Host
+  | (BaseMessage & { type: 'NATIVE_COMMAND'; payload: { command: string; payload: unknown } })
+  | (BaseMessage & { type: 'NATIVE_RESPONSE'; payload: { result?: unknown; error?: unknown } })
+  | (BaseMessage & { type: 'NATIVE_NOTIFICATION'; payload: { method: string; params: unknown } })
+  // Native Host → Background (watch events)
+  | (BaseMessage & { type: 'WATCH_EVENT'; payload: WatchEventPayload });
+
+export interface PageDetectionPayload {
+  pageType: 'storefront' | 'admin_themes' | 'checkout' | 'unknown';
+  confidence: 'high' | 'medium' | 'low';
+  detectionMethod: 'meta_tag' | 'url_pattern' | 'global_var' | 'fallback';
+  nuvemshopId?: string;
+}
+
+export interface HoverEventPayload {
+  liquidFile: string;
+  confidence: 'high' | 'medium' | 'low';
+  mappingMethod: 'data-liquid-file' | 'data-section-id' | 'data-block-id' | 'heuristic' | 'unknown';
+  elementTag: string;
+  elementClasses: string[];
+  elementId?: string;
+  boundingRect: { top: number; left: number; width: number; height: number };
+}
+
+export interface WatchEventPayload {
+  type: 'change' | 'error' | 'ready';
+  file?: string;
+  message?: string;
+  timestamp: number;
+}
+
+export type MessagePayload<T extends ExtensionMessage['type']> =
+  Extract<ExtensionMessage, { type: T }>['payload'];
+
+export function createMessage<T extends ExtensionMessage['type']>(
+  type: T,
+  payload: MessagePayload<T>,
+  source?: BaseMessage['source']
+): Extract<ExtensionMessage, { type: T }> {
+  return {
+    type,
+    payload,
+    correlationId: crypto.randomUUID(),
+    timestamp: Date.now(),
+    source,
+  } as Extract<ExtensionMessage, { type: T }>;
+}
+```
+
 ---
 
 ## New Modules (Added per Architecture Review)
 
 | Module | Purpose | Key Exports |
 |--------|---------|-------------|
-| `logger.ts` | Structured logging interface + transports | `Logger`, `ConsoleLogger`, `FileLogger`, `LogLevel` |
-| `config.ts` | Centralized configuration with Zod validation | `ExtensionConfig`, `HostConfig`, `loadConfig()` |
-| `messageRegistry.ts` | Central message handler registry | `MessageRegistry`, `registerHandler`, `dispatch` |
-| `command.ts` | Command pattern interfaces (CQRS-lite) | `Command`, `CommandHandler`, `CommandBus` |
+| `logger.ts` | Structured logging interface + transports | `Logger`, `ConsoleLogger`, `FileLogger`, `MemoryLogger`, `LogLevel`, `createLogger` |
+| `config.ts` | Centralized configuration with Zod validation | `ExtensionConfig`, `HostConfig`, `loadExtensionConfig()`, `loadHostConfig()` |
+| `messageRegistry.ts` | Central message handler registry | `MessageRegistry`, `messageRegistry` |
+| `command.ts` | Command pattern interfaces (CQRS-lite) | `Command`, `CommandHandler`, `CommandBus`, `Middleware` |
 | `validation.ts` | Zod schemas for env, messages, commands | `EnvSchema`, `MessageSchema`, `validate()` |
 | `domain/` | Pure domain layer (entities, value objects, services) | See Domain Layer section below |
 
@@ -37,22 +302,7 @@ The messaging module MUST define a discriminated union of all message types used
 
 - GIVEN `src/shared/messaging.ts`
 - WHEN inspecting its exports
-- THEN it MUST export the following message types:
-
-| Message Type | Sender | Receiver | Payload |
-|-------------|--------|----------|---------|
-| `PAGE_DETECTED` | Content | Background | `{ pageType, confidence, detectionMethod }` |
-| `HOVER_EVENT` | Content | Background | `{ liquidFile, confidence, elementTag }` |
-| `ACTIVATE_INSPECT` | DevTools | Content (via Background) | None |
-| `DEACTIVATE_INSPECT` | DevTools | Content (via Background) | None |
-| `SET_MODE` | DevTools | Background | `{ mode: 'local' \| 'remote' }` |
-| `RELOAD_THEME` | DevTools | Background | `{ themePath?: string }` |
-| `THEME_RELOADED` | Background | DevTools | `{ success, message }` |
-| `GET_THEME_INFO` | DevTools | Background | None |
-| `THEME_INFO` | Background | DevTools | `{ connected, version }` |
-| `NATIVE_COMMAND` | Background | Native Host | `{ command, payload, correlationId }` |
-| `NATIVE_RESPONSE` | Native Host | Background | `{ result, error, correlationId }` |
-| `NATIVE_NOTIFICATION` | Native Host | Background | `{ method, params }` |
+- THEN it MUST export the message types defined in the Interface Contracts section above
 
 #### Scenario: Type narrowing works
 
@@ -99,9 +349,9 @@ The storage module MUST provide typed wrappers around `chrome.storage` APIs (loc
 
 #### Scenario: Typed set/get
 
-- GIVEN a storage schema `interface Settings { mode: 'local' \| 'remote'; themePath: string }`
+- GIVEN a storage schema `interface Settings { mode: 'local' | 'remote'; themePath: string }`
 - WHEN `storage.get<Settings>(['mode', 'themePath'])` is called
-- THEN it MUST return `Promise<Partial<Settings>>` with the correct types
+- THEN it MUST return `Promise<Partial<Settings> | null>` with the correct types
 - AND TypeScript MUST enforce the return type
 
 #### Scenario: Observe changes
@@ -256,7 +506,7 @@ export interface Logger {
   child(bindings: Record<string, unknown>): Logger; // adds context
 }
 
-// Transports
+// Transports (implemented in shared, used by all adapters)
 export class ConsoleLogger implements Logger { /* ... */ }  // Panel, Background, Content
 export class FileLogger implements Logger { /* ... */ }     // Native Host (writes JSONL)
 export class MemoryLogger implements Logger { /* ... */ }   // Tests (in-memory buffer)
@@ -305,7 +555,7 @@ export function loadExtensionConfig(overrides?: Partial<ExtensionConfig>): Exten
 }
 ```
 
-**Native Host config** is in `06-native-host.md` (`HostConfigSchema`).
+**Native Host config** is defined in `06-native-host.md` (`HostConfigSchema`) but uses the same pattern.
 
 ---
 
@@ -315,6 +565,8 @@ Central registry for message handlers — replaces giant `switch` in Background.
 
 ```typescript
 // src/shared/messageRegistry.ts
+import type { ExtensionMessage } from './messaging';
+
 type MessageHandler<T extends ExtensionMessage> = (
   message: T,
   sender: chrome.runtime.MessageSender
@@ -350,6 +602,9 @@ CQRS-lite interfaces for Native Host commands.
 
 ```typescript
 // src/shared/command.ts
+import type { Result } from './result';
+import type { DomainError } from './errors';
+
 export interface Command {
   readonly name: string;
   readonly payload: unknown;
@@ -374,9 +629,29 @@ export class CommandBus {
   private handlers = new Map<string, CommandHandler<any, any>>();
   private middlewares: Middleware[] = [];
 
-  register<C extends Command, R>(handler: CommandHandler<C, R>): void { ... }
-  use(middleware: Middleware): void { ... }
-  async dispatch<C extends Command, R>(command: C): Promise<Result<R, DomainError>> { ... }
+  register<C extends Command, R>(handler: CommandHandler<C, R>): void {
+    this.handlers.set(handler.commandName, handler);
+  }
+
+  use(middleware: Middleware): void {
+    this.middlewares.push(middleware);
+  }
+
+  async dispatch<C extends Command, R>(
+    command: C
+  ): Promise<Result<R, DomainError>> {
+    const handler = this.handlers.get(command.name);
+    if (!handler) {
+      return err({ _tag: 'CommandNotFound', command: command.name });
+    }
+
+    const chain = this.middlewares.reduceRight(
+      (next, mw) => () => mw.execute(command, next),
+      () => handler.execute(command)
+    );
+
+    return chain();
+  }
 }
 ```
 
@@ -391,6 +666,8 @@ Zod schemas for all external inputs.
 ```typescript
 // src/shared/validation.ts
 import { z } from 'zod';
+import type { Result } from './result';
+import type { DomainError } from './errors';
 
 export const EnvSchema = z.object({
   CHROME_WEBSTORE_CLIENT_ID: z.string().min(1),
@@ -411,17 +688,6 @@ export const ThemePushParamsSchema = z.object({
   force: z.boolean().optional(),
 });
 
-export const NativeHostConfigSchema = z.object({
-  cli: z.object({
-    path: z.string().optional(),
-    envVar: z.string().default('NUBE_CLI_PATH'),
-    searchPaths: z.array(z.string()).default(['/usr/local/bin', '/opt/homebrew/bin']),
-    timeout: z.number().int().positive().default(30000),
-    maxRetries: z.number().int().min(0).default(3),
-  }),
-  // ... rest from HostConfigSchema
-});
-
 export function validate<T>(schema: z.ZodSchema<T>, data: unknown): Result<T, DomainError> {
   const result = schema.safeParse(data);
   if (result.success) return ok(result.data);
@@ -431,7 +697,7 @@ export function validate<T>(schema: z.ZodSchema<T>, data: unknown): Result<T, Do
 
 ---
 
-## Domain Layer (NEW)
+## Domain Layer
 
 ```
 src/domain/
@@ -478,157 +744,19 @@ Every exported type and function MUST have a JSDoc comment describing its purpos
 
 ---
 
-## Interface Contracts
+## Interface Contracts (Consolidated)
+
+All interfaces defined above in Canonical Port Interfaces section are the authoritative definitions. Other specs MUST import from these modules:
 
 ```typescript
-// === messaging.ts ===
-interface BaseMessage {
-  correlationId: string;
-  timestamp: number;
-  source?: 'content' | 'background' | 'devtools' | 'native-host';
-}
-
-type ExtensionMessage =
-  | (BaseMessage & { type: 'PAGE_DETECTED'; payload: PageDetectionPayload })
-  | (BaseMessage & { type: 'HOVER_EVENT'; payload: HoverEventPayload })
-  | (BaseMessage & { type: 'ACTIVATE_INSPECT'; payload?: undefined })
-  | (BaseMessage & { type: 'DEACTIVATE_INSPECT'; payload?: undefined })
-  | (BaseMessage & { type: 'SET_MODE'; payload: { mode: 'local' | 'remote' } })
-  | (BaseMessage & { type: 'RELOAD_THEME'; payload: { themePath?: string } })
-  | (BaseMessage & { type: 'THEME_RELOADED'; payload: { success: boolean; message: string } })
-  | (BaseMessage & { type: 'GET_THEME_INFO'; payload?: undefined })
-  | (BaseMessage & { type: 'THEME_INFO'; payload: { connected: boolean; version: string } })
-  | (BaseMessage & { type: 'NATIVE_COMMAND'; payload: { command: string; payload: unknown } })
-  | (BaseMessage & { type: 'NATIVE_RESPONSE'; payload: { result?: unknown; error?: unknown } })
-  | (BaseMessage & { type: 'NATIVE_NOTIFICATION'; payload: { method: string; params: unknown } });
-
-type MessagePayload<T extends ExtensionMessage['type']> = 
-  Extract<ExtensionMessage, { type: T }>['payload'];
-
-// === storage.ts ===
-interface StorageSchema {
-  mode: 'local' | 'remote';
-  themePath: string;
-  inspectMode: boolean;
-  schemaVersion: string;
-}
-
-type StorageArea = 'local' | 'sync' | 'session';
-
-interface StorageWrapper {
-  get<T extends keyof StorageSchema>(
-    keys: T[],
-    area?: StorageArea
-  ): Promise<Pick<StorageSchema, T>>;
-
-  set<T extends keyof StorageSchema>(
-    data: Pick<StorageSchema, T>,
-    area?: StorageArea
-  ): Promise<void>;
-
-  observe<T extends keyof StorageSchema>(
-    key: T,
-    callback: (newValue: StorageSchema[T], oldValue?: StorageSchema[T]) => void
-  ): () => void;
-
-  remove(keys: string[], area?: StorageArea): Promise<void>;
-  clear(area?: StorageArea): Promise<void>;
-
-  migrate(
-    fromVersion: string,
-    toVersion: string,
-    migrationFn: (oldData: Record<string, unknown>) => Record<string, unknown>
-  ): Promise<void>;
-}
-
-// === utils.ts ===
-interface LiquidFileInfo {
-  directory: string;
-  name: string;
-  extension: string;
-  full: string;
-}
-
-type LiquidType = 'section' | 'block' | 'template' | 'layout' | 'snippet' | 'config' | 'unknown';
-
-interface DebouncedFunction<T extends (...args: unknown[]) => unknown> {
-  (...args: Parameters<T>): ReturnType<T> | undefined;
-  cancel(): void;
-  flush(): void;
-}
-
-interface ThrottledFunction<T extends (...args: unknown[]) => unknown> {
-  (...args: Parameters<T>): void;
-  cancel(): void;
-}
-
-// === global.d.ts ===
-interface BuildInfo {
-  version: string;
-  buildTime: string;
-  mode: 'development' | 'production';
-}
-
-declare const __BUILD_INFO__: BuildInfo;
-
-// === logger.ts ===
-type LogLevel = 'debug' | 'info' | 'warn' | 'error';
-
-interface LogEntry {
-  readonly level: LogLevel;
-  readonly message: string;
-  readonly timestamp: string;
-  readonly correlationId?: string;
-  readonly context: string;
-  readonly metadata?: Record<string, unknown>;
-}
-
-interface Logger {
-  debug(msg: string, meta?: Record<string, unknown>): void;
-  info(msg: string, meta?: Record<string, unknown>): void;
-  warn(msg: string, meta?: Record<string, unknown>): void;
-  error(msg: string, error?: Error, meta?: Record<string, unknown>): void;
-  child(bindings: Record<string, unknown>): Logger;
-}
-
-// === config.ts ===
-interface ExtensionConfig {
-  nativeHost: {
-    name: string;
-    maxRetries: number;
-    retryDelayMs: number;
-  };
-  inspect: {
-    hoverDebounceMs: number;
-    maxBadgeLength: number;
-  };
-  build: {
-    version: string;
-    buildTime: string;
-    mode: 'development' | 'production';
-  };
-}
-
-// === command.ts ===
-interface Command {
-  readonly name: string;
-  readonly payload: unknown;
-  readonly correlationId: string;
-  readonly timestamp: number;
-}
-
-interface CommandHandler<C extends Command, R> {
-  readonly commandName: string;
-  execute(command: C): Promise<Result<R, DomainError>>;
-}
-
-// === validation.ts ===
-const EnvSchema = z.object({
-  CHROME_WEBSTORE_CLIENT_ID: z.string().min(1),
-  CHROME_WEBSTORE_CLIENT_SECRET: z.string().min(1),
-  CHROME_WEBSTORE_REFRESH_TOKEN: z.string().min(1),
-  NUBE_CLI_PATH: z.string().optional(),
-});
+// Import patterns for adapters:
+import type { StoragePort } from '@/shared/ports/StoragePort';
+import type { NativeHostPort } from '@/shared/ports/NativeHostPort';
+import type { MessagingPort } from '@/shared/ports/MessagingPort';
+import type { ExtensionMessage, PageDetectionPayload, HoverEventPayload } from '@/shared/messaging';
+import type { Result, DomainError, ok, err } from '@/shared/result';
+import type { Logger } from '@/shared/logger';
+import { createContainer, createToken } from '@/shared/di';
 ```
 
 ---
@@ -647,6 +775,12 @@ const EnvSchema = z.object({
 | `src/shared/messageRegistry.ts` | Re-exported | Central message handler registry |
 | `src/shared/command.ts` | Re-exported | Command pattern interfaces |
 | `src/shared/validation.ts` | Re-exported | Zod schemas + validate() |
+| `src/shared/ports/StoragePort.ts` | Implements | Storage port interface |
+| `src/shared/ports/NativeHostPort.ts` | Implements | Native host port interface |
+| `src/shared/ports/MessagingPort.ts` | Implements | Messaging port interface |
+| `src/shared/di.ts` | Uses | DI container for port registration |
+| `src/shared/result.ts` | Re-exported | Result/Either pattern |
+| `src/shared/errors.ts` | Re-exported | DomainError types |
 | `@types/chrome` | Dev dependency | Base Chrome API type definitions |
 
 **Dependency direction**: Shared modules import NOTHING from adapters. They are the domain layer.
@@ -670,6 +804,10 @@ const EnvSchema = z.object({
 | T-SH-011 | Unit | `MessageRegistry` dispatches to correct handler | Vitest |
 | T-SH-012 | Unit | `CommandBus` middleware chain executes in order | Vitest |
 | T-SH-013 | Unit | `parseLiquidUrl` / `detectLiquidType` correct | Vitest |
+| T-SH-014 | Unit | `StoragePort` get/set/observe/remove/migrate work | Vitest with chrome mocks |
+| T-SH-015 | Unit | `NativeHostPort` send/healthCheck/connect work | Vitest with mock transport |
+| T-SH-016 | Unit | `DI Container` register/resolve works | Vitest |
+| T-SH-017 | Unit | `Result` ok/err/isOk/isErr/unwrap work | Vitest |
 
 ---
 

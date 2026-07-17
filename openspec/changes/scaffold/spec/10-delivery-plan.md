@@ -6,17 +6,18 @@
 
 ## Overview
 
-The `scaffold` change delivers ~1,500 lines across ~50 files. Per SDD review budget (400 lines) and delivery strategy (`force-chained` / `stacked-to-main`), this is split into **5 stacked PRs** merged sequentially to `main`.
+The `scaffold` change delivers ~2,130 lines across ~59 files. Per SDD review budget (400 lines) and delivery strategy (`force-chained` / `stacked-to-main`), this is split into **6 stacked PRs** merged sequentially to `main`.
 
 | PR | Scope | Est. Lines | Files | Depends On |
 |----|-------|------------|-------|------------|
 | **PR #1** | Root Config + Shared Core | ~380 | 12 | — (base) |
 | **PR #2** | Manifest + Background SW | ~350 | 8 | PR #1 |
-| **PR #3** | DevTools Panel (Preact) | ~390 | 15 | PR #1 |
-| **PR #4** | Content Inspector + Native Host | ~370 | 10 | PR #1, PR #2 |
-| **PR #5** | Cross-Cutting + CI/CD + Zip + Icons + README | ~360 | 8 | PR #1-4 |
+| **PR #3** | Native Host | ~300 | 6 | PR #1 |
+| **PR #4** | DevTools Panel (Preact) | ~390 | 15 | PR #1, PR #2, PR #3 |
+| **PR #5** | Content Inspector | ~350 | 10 | PR #1, PR #2, PR #4 |
+| **PR #6** | Cross-Cutting + CI/CD + Zip + Icons + README | ~360 | 8 | PR #1-5 |
 
-**Total**: ~1,850 lines | ~53 files | 5 PRs
+**Total**: ~2,130 lines | ~59 files | 6 PRs
 
 ---
 
@@ -26,9 +27,10 @@ The `scaffold` change delivers ~1,500 lines across ~50 files. Per SDD review bud
 |----|-------|--------|-------|---------------------|--------|--------|
 | #1 | Root Config + Shared Core | Not Started | @backend-lead | — / — | ☐ | ☐ |
 | #2 | Manifest + Background SW | Not Started | @backend-lead | — / — | ☐ | ☐ |
-| #3 | DevTools Panel (Preact) | Not Started | @frontend-lead | — / — | ☐ | ☐ |
-| #4 | Content Inspector + Native Host | Not Started | @fullstack-lead | — / — | ☐ | ☐ |
-| #5 | Cross-Cutting + CI/CD + Zip | Not Started | @devops-lead | — / — | ☐ | ☐ |
+| #3 | Native Host | Not Started | @fullstack-lead | — / — | ☐ | ☐ |
+| #4 | DevTools Panel (Preact) | Not Started | @frontend-lead | — / — | ☐ | ☐ |
+| #5 | Content Inspector | Not Started | @frontend-lead | — / — | ☐ | ☐ |
+| #6 | Cross-Cutting + CI/CD + Zip | Not Started | @devops-lead | — / — | ☐ | ☐ |
 
 ### Sub-tasks PR #1 (granular tracking)
 
@@ -276,43 +278,35 @@ Generate valid Manifest V3, register Service Worker, implement message routing a
 
 ---
 
-## PR #3: DevTools Panel (Preact)
+## PR #3: Native Host
 
 ### Goal
-Register DevTools panel, render Preact UI with stub components for: Local/Remote toggle, Reload Theme button, Inspect Mode toggle, Status Bar. **Global reactive store with Preact Signals for shared panel state.**
+Native messaging host binary that responds to PING and executes nube-cli commands. Standalone — no Chrome dependencies needed.
 
 ### Files Created
 | Path | Purpose | Est. Lines |
 |------|---------|------------|
-| `src/devtools/devtools.html` | Panel HTML entry | 20 |
-| `src/devtools/devtools.ts` | `chrome.devtools.panels.create()` registration | 25 |
-| `src/devtools/panel/Panel.tsx` | Root Preact component (layout) | 50 |
-| `src/devtools/panel/App.tsx` | Main app with state + message hooks | 60 |
-| `src/devtools/panel/store/panelStore.ts` | **Global reactive store (Preact Signals)** | 45 |
-| `src/devtools/panel/components/LocalRemoteToggle.tsx` | Toggle + message to background | 35 |
-| `src/devtools/panel/components/ReloadThemeButton.tsx` | Button + loading state | 35 |
-| `src/devtools/panel/components/InspectModeToggle.tsx` | Toggle + content script activation | 35 |
-| `src/devtools/panel/components/StatusBar.tsx` | Connection state + version | 25 |
-| `src/devtools/panel/components/ErrorBoundary.tsx` | Preact error boundary | 20 |
-| `src/devtools/panel/hooks/useChromeRuntime.ts` | `chrome.runtime.sendMessage` wrapper | 30 |
-| `src/devtools/panel/hooks/useConnectionState.ts` | Background connection state | 25 |
-| `src/devtools/panel/hooks/useNativeHostStatus.ts` | Native host health polling | 20 |
-| `src/devtools/panel/styles.css` | Panel styling (CSP-compliant) | 40 |
-| `src/devtools/panel/styles.module.css` | CSS Modules for components | 25 |
-| `src/devtools/panel/types.ts` | Panel-specific types | 15 |
+| `src/native-host/main.ts` | CLI entry: health, push, preview, watch | 90 |
+| `src/native-host/CommandDispatcher.ts` | JSON-RPC 2.0 dispatch | 40 |
+| `src/native-host/NubeCliExecutor.ts` | Spawns nube-cli, timeout, parsing | 50 |
+| `src/native-host/StdioTransport.ts` | stdin/stdout JSON-RPC framing | 35 |
+| `src/native-host/FileStorageAdapter.ts` | StoragePort adapter (file-based) | 25 |
+| `src/native-host/package.json` | Native host deps (minimal) | 15 |
 
 ### Acceptance Criteria
-- AC-DP-01..07, **AC-DP-08..13** (panel store)
+- AC-NH-01..07
 
-### CI Gates (extends PR #1-2)
-- Build produces `dist/devtools/devtools.html`, `dist/devtools/panel/*.js`
-- Panel bundle ≤ 50 KB gzipped
+### CI Gates (extends PR #1)
+- Build produces `dist/native-host/host.node.js`
+- Native host binary via `npm run build:host`
 
 ### Validation
 ```bash
-# In Chrome: Open DevTools on any page → "🛠 Tienda Nube" tab appears
-# UI renders: toggles, button, status bar (all stubbed)
-# Console: no CSP violations, no errors
+node dist/native-host/host.node.js --health
+# { "status": "ok", "version": "0.1.0" }
+
+node dist/native-host/host.node.js push --theme-id 123
+# Executes nube-cli theme push, returns structured result
 ```
 
 ---
