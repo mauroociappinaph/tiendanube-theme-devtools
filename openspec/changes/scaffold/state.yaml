@@ -1,18 +1,80 @@
 # DAG State — scaffold
 # Generated: 2026-07-16
+# Phase: tasks
 
 completed_phases:
   - explore   # openspec/changes/scaffold/exploration.md
   - propose   # openspec/changes/scaffold/proposal.md
+  - spec      # openspec/changes/scaffold/spec/ (11 files, 00-10)
+  - design    # openspec/changes/scaffold/design/ (10 files)
+  - tasks     # openspec/changes/scaffold/tasks.md
 
 pending_phases:
-  - spec
-  - design
-  - tasks
   - apply
   - verify
   - archive
 
-current_phase: propose
-next_phase: spec
-status: ready_for_spec
+current_phase: tasks
+next_phase: apply
+status: ready_for_apply
+
+# Task state tracking
+tasks:
+  # PR #1: Foundation
+  T-001: { status: pending, pr: 1 }
+  T-002: { status: pending, pr: 1 }
+  T-003: { status: pending, pr: 1 }
+  T-004: { status: pending, pr: 1 }
+  T-005: { status: pending, pr: 1 }
+  T-006: { status: pending, pr: 1 }
+
+  # PR #2a: Shared Types
+  T-007: { status: pending, pr: "2a" }
+  T-008: { status: pending, pr: "2a" }
+  T-009: { status: pending, pr: "2a" }
+  T-012: { status: pending, pr: "2a" }
+
+  # PR #2b: Shared Logic
+  T-010: { status: pending, pr: "2b" }
+  T-011: { status: pending, pr: "2b" }
+  T-013: { status: pending, pr: "2b" }
+  T-014: { status: pending, pr: "2b" }
+  T-015: { status: pending, pr: "2b" }
+
+  # PR #3: Background (was PR #3, now PR #3)
+  T-016: { status: pending, pr: 3 }
+  T-017: { status: pending, pr: 3 }
+  T-018: { status: pending, pr: 3 }
+  T-019: { status: pending, pr: 3 }
+
+  # PR #4: DevTools Panel (was PR #4, now PR #4)
+  T-020: { status: pending, pr: 4 }
+  T-021: { status: pending, pr: 4 }
+  T-022: { status: pending, pr: 4 }
+  T-023: { status: pending, pr: 4 }
+  T-024: { status: pending, pr: 4 }
+  T-025: { status: pending, pr: 4 }
+
+  # PR #5: Content Script (was PR #5, now PR #5)
+  T-026: { status: pending, pr: 5 }
+  T-027: { status: pending, pr: 5 }
+  T-028: { status: pending, pr: 5 }
+  T-029: { status: pending, pr: 5 }
+
+  # PR #6: Native Host (was PR #6, now PR #6)
+  T-030: { status: pending, pr: 6 }
+  T-031: { status: pending, pr: 6 }
+  T-032: { status: pending, pr: 6 }
+  T-033: { status: pending, pr: 6 }
+  T-034: { status: pending, pr: 6 }
+
+  # PR #7: Integration (was PR #7, now PR #7)
+  T-035: { status: pending, pr: 7 }
+  T-036: { status: pending, pr: 7 }
+  T-037: { status: pending, pr: 7 }
+  T-038: { status: pending, pr: 7 }
+  T-039: { status: pending, pr: 7 }
+
+# Active PR tracking (for the apply phase)
+active_pr: null
+completed_prs: []
