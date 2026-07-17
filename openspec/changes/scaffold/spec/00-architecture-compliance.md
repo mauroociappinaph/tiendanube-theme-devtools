@@ -848,6 +848,55 @@ Root config files:
 
 ---
 
+## Definition of Ready / Definition of Done (Project Policy)
+
+### DoR — Definition of Ready (antes de iniciar un PR)
+
+| Criterio | Verificación |
+|----------|--------------|
+| **Spec exists** | FR/NFR escritos en `openspec/changes/<change>/spec/` |
+| **ACs claros** | Cada FR tiene ACs medibles (Given/When/Then) |
+| **Traceability** | Cada FR mapea a principio arquitectónico + archivo |
+| **Dependencies** | PRs bloqueantes identificados y enlazados |
+| **Estimation** | Líneas estimadas ≤ 400 (review budget) |
+| **Test plan** | Unit/Integration/E2E definidos en spec |
+| **Security review** | Cambios de permisos/config seguras documentados |
+
+### DoD — Definition of Done (para mergear a main)
+
+| Criterio | Verificación |
+|----------|--------------|
+| **Spec Compliance** | ✅ Todos los FR/NFR del spec marcados ✅/❌ con evidencia |
+| **Code Quality** | `lint` + `typecheck` + `format` pasan (0 warnings) |
+| **Tests** | Unit + Integration + E2E definidos pasan (`vitest run`) |
+| **Coverage** | Umbrales: lines 80%, functions 80%, branches 70%, statements 80% |
+| **Build** | `npm run build` produce `dist/` válido + `npm run zip` genera `.zip` |
+| **Architecture** | `madge --circular` = 0 ciclos; `npm run validate:arch` pasa |
+| **Security** | `npm audit --audit-level=high` = 0; permisos mínimos en manifest |
+| **Documentation** | README actualizado si cambio externo; ADR si decisión arquitectónica |
+| **Agent Self-Eval** | Checklist FR-POL-020 completada en PR |
+| **SDD Validation** | FR-POL-021: archivos físicos existen en `openspec/changes/<change>/spec/` |
+
+---
+
+## SDD Phase Gates (Gates entre fases SDD)
+
+| Fase | Entrada | Salida | Gate Automático | Gate Manual |
+|------|---------|--------|-----------------|-------------|
+| **Explore** | Idea / Problem statement | `exploration.md` | Archivo existe | Revisión usuario: "¿Entendido el problema?" |
+| **Propose** | Exploration | `proposal.md` | FRs + ACs + Risques + Esfuerzo | Aprobación usuario: "¿Arrancamos?" |
+| **Spec** | Proposal | `spec/*.md` (11 archivos) | 11 archivos existen + traceability matrix | Revisión usuario: "¿Spec completa?" |
+| **Design** | Spec | `design/*.md` (C4, sequences, component tree) | Diagramas + breakdown por PR | Aprobación usuario: "¿Diseño correcto?" |
+| **Tasks** | Design + Spec | `tasks.md` + `state.yaml` | Tasks cubren todos FRs, ≤400 líneas/PR | Aprobación usuario: "¿Tasks listos?" |
+| **Apply (PR #1)** | Tasks | Code en `develop` | CI pasa (lint, typecheck, test, build) | Usuario revisa PR #1 |
+| **Apply (PR #2..N)** | Tasks | Code en `develop` | CI pasa + ≤400 líneas/PR | Usuario revisa cada PR |
+| **Verify** | Todos PRs merged | `verify-report.md` | Todos ACs ✅ + E2E pasan | Usuario: "¿Release?" |
+| **Archive** | Verify | `archive-report.md` | Estado final en Engram + OpenSpec | Usuario: "¿Cerramos?" |
+
+**Regla de oro**: No se avanza a la siguiente fase sin pasar **ambos** gates (automático + manual).
+
+---
+
 ## Summary Table (Updated)
 
 | Principle | FR/NFR Count | Key Files |

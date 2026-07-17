@@ -8,7 +8,41 @@
 
 ## Purpose
 
-Define the Node.js native messaging host that bridges the Chrome extension with the Tiendanube CLI (`nube-cli`). The host communicates with the extension via Chrome's native messaging protocol (JSON-RPC 2.0 over stdin/stdout), dispatches commands to `nube-cli`, and returns structured results. The host is bundled as a standalone binary via esbuild targeting Node.js 20+.
+Define the Node.js native messaging host that bridges the Chrome extension with the Tiendanube CLI (`nube-cli`). The host communicates with the extension via Chrome's native messaging protocol (stdin/stdout with 4-byte length prefix), **internally uses JSON-RPC 2.0 for command dispatch**, and exposes a clean `NativeHostPort` interface to the Background adapter. The host is bundled as a standalone binary via esbuild targeting Node.js 20+.
+
+---
+
+## Architecture (Hexagonal Compliance)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    NATIVE HOST (Adapter)                        │
+├─────────────────────────────────────────────────────────────────┤
+│  StdioTransport          │  JSON-RPC 2.0 (internal only)        │
+│  ┌─────────────────────┐ │  ┌─────────────────────────────────┐ │
+│  │ readMessage()       │ │  │ CommandBus v2                   │ │
+│  │ writeMessage()      │ │  │ ┌─────────────┐ ┌─────────────┐  │ │
+│  └──────────┬──────────┘ │  │ │ CommandHandler│ │ Middleware  │  │ │
+│             │            │  │ └─────────────┘ └─────────────┘  │ │
+│             ▼            │  └─────────────────────────────────┘ │
+│  ┌─────────────────────┐ │  ┌─────────────────────────────────┐ │
+│  │ CommandDispatcher   │◄─┤  │ Domain Services                 │ │
+│  │ (routes JSON-RPC →  │  │  │ ┌─────────────┐ ┌────────────┐ │ │
+│  │  CommandHandlers)   │  │  │ │ ThemeService  │ │WatchService │ │
+│  └──────────┬──────────┘  │  │ └─────────────┘ └────────────┘ │ │
+│             │             │  └─────────────────────────────────┘ │
+│             ▼             │  ┌─────────────────────────────────┐ │
+│  ┌─────────────────────┐  │  │ Config & Security               │ │
+│  │ CommandHandlers     │  │  │ ┌─────────────┐ ┌────────────┐ │ │
+│  │ ThemePushHandler    │  │  │ │ HostConfig    │ │ Security   │ │
+│  │ ThemePreviewHandler │  │  │ │ (Zod validated)│ │ (path, args)│ │
+│  │ ThemeWatchHandler   │  │  │ └─────────────┘ └────────────┘ │ │
+│  │ SystemHealthHandler │  │  └─────────────────────────────────┘ │
+│  └─────────────────────┘  └─────────────────────────────────────┘
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Key Principle**: Background ↔ Native Host communication uses `NativeHostPort.send<T>(command, payload): Promise<Result<T>>`. **JSON-RPC is completely encapsulated inside `StdioTransport`**. Background knows nothing about JSON-RPC.
 
 ---
 
@@ -18,388 +52,504 @@ Define the Node.js native messaging host that bridges the Chrome extension with 
 
 The host MUST implement Chrome's native messaging protocol:
 
-1. Read messages from `stdin` as 4-byte little-endian message length prefix + UTF-8 JSON body
+1. Read messages from `stdin` as 4-byte little-endian length prefix + UTF-8 JSON body
 2. Write messages to `stdout` as 4-byte little-endian length prefix + UTF-8 JSON body
 3. Use `stderr` for logging (Chrome ignores stderr from native hosts)
 4. Exit with code 0 on clean shutdown, non-zero on error
 
-**Traceability**: Chrome native messaging protocol is mandatory for host communication.
+**Internal Protocol**: JSON-RPC 2.0 over the native messaging framing.
 
 #### Scenario: Host reads a valid message
 
-- GIVEN the host process is running
-- WHEN 4 bytes `0x1F 0x00 0x00 0x00` (= 31) are written to stdin followed by a 31-byte JSON string
-- THEN the host MUST parse the message as a valid JSON-RPC 2.0 request
-- AND NOT exit
+- GIVEN Chrome extension sends a framed message
+- WHEN `StdioTransport.readMessage()` is called
+- THEN it parses the 4-byte length, reads exactly that many bytes, parses JSON-RPC
+- AND dispatches to `CommandBus`
 
 #### Scenario: Host writes a response
 
-- GIVEN the host processes a request
-- WHEN it needs to send a response
-- THEN it MUST write the 4-byte length prefix first, then the JSON body
-- AND the response MUST be valid JSON
+- GIVEN `CommandBus` returns `Result<T>`
+- WHEN `StdioTransport.writeMessage()` is called
+- THEN it serializes to JSON-RPC 2.0 response, prefixes with 4-byte length, writes to `stdout`
 
-#### Scenario: Invalid message on stdin
+---
 
-- GIVEN the host receives bytes that do not form valid UTF-8 JSON
-- WHEN parsing fails
-- THEN the host MUST write a JSON-RPC error response to stdout
-- AND log the error to stderr
-- AND NOT crash (continue reading next message)
+### FR-NH-002: Command Bus v2 (Internal)
 
-### FR-NH-002: JSON-RPC 2.0 Dispatch
+The host MUST implement a `CommandBus` that:
 
-The host MUST implement a JSON-RPC 2.0 dispatcher that routes method calls to command handlers.
+- Registers `CommandHandler<Command, Result>` by command name
+- Supports middleware pipeline (logging, timing, error handling)
+- Returns `Result<T>` — **never throws**
 
-**Traceability**: JSON-RPC 2.0 is the standard protocol for native messaging.
+```typescript
+// src/native-host/commandBus.ts
+export interface CommandHandler<C extends Command, R> {
+  readonly commandName: string;
+  execute(command: C): Promise<Result<R, DomainError>>;
+}
 
-#### Scenario: Successful command dispatch
+export interface Middleware {
+  readonly name: string;
+  execute<C extends Command, R>(
+    command: C,
+    next: () => Promise<Result<R, DomainError>>
+  ): Promise<Result<R, DomainError>>;
+}
 
-- GIVEN a valid JSON-RPC 2.0 request with method `theme.push`
-- WHEN the dispatcher processes it
-- THEN it MUST call the `themePush` handler with the `params` object
-- AND return a response with the same `id`
+export class CommandBus {
+  private handlers = new Map<string, CommandHandler<any, any>>();
+  private middlewares: Middleware[] = [];
 
-#### Scenario: Unknown method
-
-- GIVEN a request with method `unknown.command`
-- WHEN the dispatcher processes it
-- THEN it MUST return a JSON-RPC error: `{ "code": -32601, "message": "Method not found" }`
-- AND the error response MUST use the same `id` as the request
-
-#### Scenario: Invalid params
-
-- GIVEN a request with method `theme.push` but missing required params
-- WHEN the handler validates the params
-- THEN it MUST return a JSON-RPC error: `{ "code": -32602, "message": "Invalid params" }`
-- AND include a details field: `{ "details": "Missing required field: 'filePath'" }`
-
-### FR-NH-003: Command: theme.push
-
-The host MUST support the `theme.push` command to push theme files to a Tiendanube store via `nube-cli`.
-
-#### Scenario: Push single file
-
-- GIVEN the request params include `{ "filePath": "/path/to/theme/sections/product.liquid" }`
-- WHEN the host executes `nube-cli theme push sections/product.liquid`
-- THEN it MUST return a success response with:
-  ```json
-  {
-    "jsonrpc": "2.0",
-    "result": {
-      "success": true,
-      "command": "nube-cli theme push sections/product.liquid",
-      "exitCode": 0,
-      "stdout": "...",
-      "stderr": "",
-      "duration": 1234
-    },
-    "id": "req-1"
+  register<C extends Command, R>(handler: CommandHandler<C, R>): void {
+    this.handlers.set(handler.commandName, handler);
   }
-  ```
 
-#### Scenario: Push entire theme
-
-- GIVEN the request params include `{ "themePath": "/path/to/theme", "all": true }`
-- WHEN the host executes `nube-cli theme push --all`
-- THEN it MUST return the command result with stdout captured
-
-#### Scenario: Push fails
-
-- GIVEN `nube-cli` exits with non-zero code
-- WHEN the host captures the exit code
-- THEN it MUST set `result.success` to `false`
-- AND include `stderr` content in the response
-- AND the host MUST NOT crash
-
-### FR-NH-004: Command: theme.preview
-
-The host MUST support the `theme.preview` command to start a preview server.
-
-#### Scenario: Preview starts successfully
-
-- GIVEN the request params include `{ "themePath": "/path/to/theme" }`
-- WHEN the host executes `nube-cli theme preview`
-- THEN it MUST return:
-  ```json
-  {
-    "jsonrpc": "2.0",
-    "result": {
-      "success": true,
-      "previewUrl": "https://preview.tiendanube.com/...",
-      "command": "nube-cli theme preview",
-      "exitCode": 0
-    },
-    "id": "req-2"
+  use(middleware: Middleware): void {
+    this.middlewares.push(middleware);
   }
-  ```
 
-#### Scenario: Preview already running
+  async dispatch<C extends Command, R>(
+    command: C
+  ): Promise<Result<R, DomainError>> {
+    const handler = this.handlers.get(command.name);
+    if (!handler) {
+      return err({ _tag: 'CommandNotFound', command: command.name });
+    }
 
-- GIVEN a preview server is already active
-- WHEN the host receives another `theme.preview` request
-- THEN it MUST return an error: `{ "code": -32000, "message": "Preview already running" }`
+    // Build middleware chain
+    const chain = this.middlewares.reduceRight(
+      (next, mw) => () => mw.execute(command, next),
+      () => handler.execute(command)
+    );
 
-### FR-NH-005: Command: theme.watch
-
-The host MUST support the `theme.watch` command to watch for file changes and auto-push.
-
-#### Scenario: Watch starts
-
-- GIVEN the request params include `{ "themePath": "/path/to/theme" }`
-- WHEN the host executes `nube-cli theme watch`
-- THEN it MUST return a pending response immediately
-- AND notify the extension on file changes via a notification message
-- AND stop watching when `theme.watch.stop` is received
-
-#### Scenario: Watch stop
-
-- GIVEN a watch process is running
-- WHEN the host receives `{ "method": "theme.watch.stop" }`
-- THEN it MUST terminate the watch process (SIGTERM)
-- AND return a success response
-
-### FR-NH-006: Health Check
-
-The host MUST provide a `system.health` method for health checks.
-
-#### Scenario: Healthy host
-
-- GIVEN the host is running and responsive
-- WHEN a `system.health` request is received
-- THEN the host MUST respond with:
-  ```json
-  {
-    "jsonrpc": "2.0",
-    "result": {
-      "status": "ok",
-      "version": "1.0.0",
-      "nodeVersion": "v20.12.0",
-      "nubeCliAvailable": true,
-      "nubeCliVersion": "2.1.0",
-      "uptime": 12345
-    },
-    "id": "req-0"
+    return chain();
   }
-  ```
+}
+```
 
-#### Scenario: nube-cli not found
+**Default Middlewares** (registered in order):
+1. `LoggingMiddleware` — logs command + duration
+2. `TimingMiddleware` — adds `executionTimeMs` to result metadata
+3. `ErrorHandlingMiddleware` — catches thrown errors, wraps in `Result`
 
-- GIVEN `nube-cli` is not installed or not in PATH
-- WHEN `system.health` runs
-- THEN the host MUST set `nubeCliAvailable` to `false`
-- AND include a `warning` field: `"nube-cli not found in PATH. Install via: npm install -g @tiendanube/nube-cli"`
+---
 
-### FR-NH-007: Path Discovery
+### FR-NH-003: Host Configuration (Zod Validated)
 
-The host MUST discover the `nube-cli` binary location using the following strategy:
+All configuration via `HostConfig` — validated at startup with Zod.
 
-1. Check `process.env.NUBE_CLI_PATH` (explicit override)
-2. Check `PATH` for `nube-cli`
-3. Check common install locations: `/usr/local/bin/nube-cli`, `~/.nvm/versions/node/*/bin/nube-cli`
-4. Return error if not found
+```typescript
+// src/native-host/config.ts
+import { z } from 'zod';
 
-#### Scenario: Environment variable override
+export const HostConfigSchema = z.object({
+  // CLI discovery
+  cli: z.object({
+    path: z.string().optional().describe('Explicit path to nube-cli binary'),
+    envVar: z.string().default('NUBE_CLI_PATH').describe('Env var to check first'),
+    searchPaths: z.array(z.string()).default([
+      '/usr/local/bin',
+      '/opt/homebrew/bin',
+      process.env.HOME ? `${process.env.HOME}/.nvm/versions/node/*/bin` : '',
+    ]).describe('Fallback search paths'),
+    timeout: z.number().int().positive().default(30000).describe('Command timeout (ms)'),
+    maxRetries: z.number().int().min(0).default(3).describe('Retries for transient failures'),
+  }),
 
-- GIVEN `process.env.NUBE_CLI_PATH` is set to `/custom/path/nube-cli`
-- WHEN the host resolves the binary path
-- THEN it MUST use `/custom/path/nube-cli`
-- AND NOT search PATH
+  // Watch service
+  watch: z.object({
+    debounceMs: z.number().int().positive().default(500),
+    maxConcurrent: z.number().int().positive().default(2),
+    tempDir: z.string().default(() => `${os.tmpdir()}/tiendanube-native-host`),
+  }),
 
-#### Scenario: PATH discovery
+  // Security
+  security: z.object({
+    allowedBasePaths: z.array(z.string()).default([
+      process.env.HOME ? `${process.env.HOME}/tiendanube` : '',
+      '/tmp/tiendanube',
+    ]).describe('Allowed base directories for theme paths'),
+    maxParamLength: z.number().int().positive().default(4096),
+    forbiddenPatterns: z.array(z.string()).default(['..', ';', '&&', '|', '`', '$(']),
+  }),
 
-- GIVEN `NUBE_CLI_PATH` is not set
-- AND `nube-cli` is in PATH
-- WHEN the host resolves the binary path
-- THEN it MUST find it via `which nube-cli` or `where nube-cli`
-- AND cache the path for subsequent calls
+  // Logging
+  logging: z.object({
+    level: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+    file: z.string().optional(),
+    console: z.boolean().default(true),
+  }),
 
-#### Scenario: Not found
+  // Advanced
+  advanced: z.object({
+    ipcBufferSize: z.number().int().positive().default(64 * 1024), // 64KB
+    shutdownGracePeriod: z.number().int().positive().default(5000),
+  }),
+});
 
-- GIVEN `nube-cli` is not installed anywhere
-- WHEN the host resolves the path
-- THEN all methods that require `nube-cli` MUST return error code `-32001`
-- AND the error message MUST include: `"nube-cli not found"`
-- AND include installation instructions in the error details
+export type HostConfig = z.infer<typeof HostConfigSchema>;
 
-### FR-NH-008: Error Resilience
+// Load with validation
+export function loadHostConfig(overrides?: Partial<HostConfig>): HostConfig {
+  const raw = {
+    cli: {
+      path: process.env.NUBE_CLI_PATH,
+      envVar: 'NUBE_CLI_PATH',
+      searchPaths: ['/usr/local/bin', '/opt/homebrew/bin'],
+      timeout: 30000,
+      maxRetries: 3,
+    },
+    watch: { debounceMs: 500, maxConcurrent: 2 },
+    security: { allowedBasePaths: [], maxParamLength: 4096, forbiddenPatterns: ['..', ';', '&&', '|', '`', '$('] },
+    logging: { level: 'info', console: true },
+    advanced: { ipcBufferSize: 64 * 1024, shutdownGracePeriod: 5000 },
+  };
 
-The host MUST handle errors gracefully without crashing.
+  const merged = deepMerge(raw, overrides ?? {});
+  const result = HostConfigSchema.safeParse(merged);
 
-#### Scenario: Command timeout
+  if (!result.success) {
+    throw new Error(`Invalid HostConfig: ${result.error.format()}`);
+  }
 
-- GIVEN a `nube-cli` command takes longer than 30 seconds
-- WHEN the timeout expires
-- THEN the host MUST terminate the child process (SIGTERM, then SIGKILL after 5s)
-- AND return a timeout error: `{ "code": -32002, "message": "Command timed out after 30s" }`
+  return result.data;
+}
+```
 
-#### Scenario: Concurrent request handling
+**Security Validations** (enforced at startup + per command):
 
-- GIVEN two requests arrive simultaneously
-- WHEN the first request starts a long-running command
-- THEN the second request MUST be queued
-- AND processed after the first completes
-- AND the host MUST NOT crash
+| Validation | Implementation |
+|------------|----------------|
+| Theme path within allowed base paths | `path.resolve(themePath).startsWith(allowedBasePath)` |
+| Path traversal prevention | `path.normalize(themePath)` must not contain `..` |
+| Max parameter length | All string params ≤ `security.maxParamLength` |
+| Forbidden patterns | Reject params containing `..`, `;`, `&&`, `\|`, `\``, `$(` |
+| **Always** `execFile` (never shell) | `child_process.execFile(cmd, args, { shell: false })` |
+| Argument sanitization | Args passed as array, never concatenated into string |
 
-#### Scenario: Invalid JSON on stdin
+---
 
-- GIVEN malformed JSON is written to stdin
-- WHEN parsing fails
-- THEN the host MUST write a JSON-RPC parse error response
-- AND continue reading the next message
-- AND log the error to stderr
+### FR-NH-004: Command Handlers (Domain Services)
+
+Each command maps to a **Domain Service** — pure business logic, no I/O.
+
+```typescript
+// src/domain/services/ThemeService.ts
+export class ThemeService {
+  constructor(
+    private readonly cli: CliExecutor,      // Adapter
+    private readonly config: HostConfig,
+    private readonly logger: Logger
+  ) {}
+
+  async pushTheme(params: ThemePushParams): Promise<Result<ThemePushResult, DomainError>> {
+    // 1. Validate theme path (security)
+    const pathResult = validateThemePath(params.themePath, this.config.security);
+    if (pathResult.isErr()) return pathResult;
+
+    // 2. Execute via CLI
+    const cliResult = await this.cli.execute('theme', ['push', '--theme', params.themePath]);
+    if (cliResult.isErr()) return cliResult;
+
+    // 3. Parse output
+    return ok({ themeId: cliResult.value.themeId, url: cliResult.value.url });
+  }
+
+  async previewTheme(params: ThemePreviewParams): Promise<Result<ThemePreviewResult, DomainError>> {
+    // ... similar structure
+  }
+}
+```
+
+**Command Definitions** (from `shared/messaging.ts`):
+
+```typescript
+// shared/messaging.ts
+export interface ThemePushCommand {
+  readonly name: 'theme.push';
+  readonly payload: { themePath: string; force?: boolean };
+}
+
+export interface ThemePreviewCommand {
+  readonly name: 'theme.preview';
+  readonly payload: { themePath: string; port?: number };
+}
+
+export interface ThemeWatchCommand {
+  readonly name: 'theme.watch';
+  readonly payload: { themePath: string; onChange: (event: WatchEvent) => void };
+}
+
+export interface SystemHealthCommand {
+  readonly name: 'system.health';
+  readonly payload: Record<string, never>;
+}
+```
+
+---
+
+### FR-NH-005: Watch Service (Streaming)
+
+Long-running watch with **streaming updates** via native messaging notifications.
+
+```typescript
+// src/domain/services/WatchService.ts
+export interface WatchEvent {
+  readonly type: 'change' | 'error' | 'ready';
+  readonly file?: string;
+  readonly message?: string;
+  readonly timestamp: number;
+}
+
+export class WatchService {
+  private processes = new Map<string, ChildProcess>();
+
+  async watchTheme(
+    themePath: string,
+    onEvent: (event: WatchEvent) => void
+  ): Promise<Result<{ stop: () => void }, DomainError>> {
+    // 1. Validate path
+    // 2. Spawn `nube-cli theme watch --theme <path>`
+    // 3. Parse stdout lines as JSON events
+    // 4. Forward each event via `onEvent`
+    // 5. Return `{ stop: () => process.kill() }`
+  }
+
+  stopAll(): void {
+    this.processes.forEach((p) => p.kill());
+    this.processes.clear();
+  }
+}
+```
+
+**Notification Format** (JSON-RPC notification over native messaging):
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "watch.event",
+  "params": { "type": "change", "file": "sections/product.liquid", "timestamp": 1234567890 }
+}
+```
+
+---
+
+### FR-NH-006: StdioTransport (JSON-RPC Encapsulation)
+
+```typescript
+// src/native-host/StdioTransport.ts
+export class StdioTransport {
+  private buffer = Buffer.alloc(0);
+  private readonly logger: Logger;
+
+  constructor(logger: Logger) {
+    this.logger = logger;
+  }
+
+  // Read framed message from stdin
+  async readMessage(): Promise<JsonRpcRequest | null> {
+    // 1. Read 4-byte length prefix
+    // 2. Read exactly N bytes
+    // 3. Parse JSON-RPC 2.0
+    // 4. Return request object
+  }
+
+  // Write framed response/notification to stdout
+  writeMessage(message: JsonRpcResponse | JsonRpcNotification): void {
+    const json = JSON.stringify(message);
+    const length = Buffer.alloc(4);
+    length.writeUInt32LE(json.length, 0);
+    process.stdout.write(length);
+    process.stdout.write(json);
+  }
+
+  // Notifications (watch events, status updates)
+  notify(method: string, params: unknown): void {
+    this.writeMessage({ jsonrpc: '2.0', method, params });
+  }
+}
+```
+
+**JSON-RPC 2.0 Types**:
+```typescript
+type JsonRpcRequest = { jsonrpc: '2.0'; id: string | number; method: string; params?: unknown };
+type JsonRpcResponse = { jsonrpc: '2.0'; id: string | number; result?: unknown; error?: { code: number; message: string } };
+type JsonRpcNotification = { jsonrpc: '2.0'; method: string; params?: unknown };
+```
+
+---
+
+### FR-NH-007: Security Hardening
+
+| Control | Implementation |
+|---------|----------------|
+| **Path traversal** | `path.resolve(userPath).startsWith(allowedBasePath)` + `!normalizedPath.includes('..')` |
+| **Arg injection** | Always `execFile(cmd, args, { shell: false })` — args as array |
+| **Input sanitization** | Zod schema on all params + `security.forbiddenPatterns` regex |
+| **Path allowlist** | Config-driven `security.allowedBasePaths` — rejects anything outside |
+| **Max param length** | Reject any string param > `security.maxParamLength` (default 4KB) |
+| **Forbidden chars** | Reject params matching `['..', ';', '&&', '\|', '\`', '$(']` |
+| **Timeout enforcement** | `child_process.execFile` with `timeout` option + SIGTERM/SIGKILL cascade |
+| **Resource limits** | `maxConcurrent` watch processes, `ipcBufferSize` cap |
+
+---
+
+### FR-NH-008: Health Check & Discovery
+
+```typescript
+// src/native-host/commands/SystemHealthCommand.ts
+export class SystemHealthCommand implements CommandHandler<SystemHealthCommand, HealthResult> {
+  readonly commandName = 'system.health';
+
+  async execute(): Promise<Result<HealthResult, DomainError>> {
+    const cliPath = await discoverCliPath(this.config);
+    const version = await getCliVersion(cliPath);
+    const permissions = await checkPermissions(cliPath);
+
+    return ok({
+      status: 'healthy',
+      cli: { path: cliPath, version },
+      permissions,
+      timestamp: Date.now(),
+    });
+  }
+}
+```
 
 ---
 
 ## Non-Functional Requirements
 
-### NFR-NH-001: Binary Size
+### NFR-NH-001: Bundle Size
+- **≤ 8 MB** fully bundled (esbuild, CJS target, Node 20 target)
 
-The bundled native host binary MUST NOT exceed 5MB. The host uses Node.js built-in modules only (`child_process`, `path`, `fs`) plus the JSON-RPC implementation.
+### NFR-NH-002: Startup Latency
+- **≤ 500ms** from process spawn to ready for messages
 
-**Traceability**: Fully bundled via esbuild — no external dependencies.
+### NFR-NH-003: Cross-Platform
+- Binaries for: Linux (x64), macOS (x64 + arm64), Windows (x64)
+- `esbuild` with `--platform=node --target=node20`
 
-### NFR-NH-002: Startup Time
+### NFR-NH-004: Concurrency
+- **Max 2 concurrent watch processes** (configurable)
+- Command queue for sequential theme pushes
 
-The host MUST be ready to process requests within 500ms of process start. This covers module loading, path discovery, and health state initialization.
+### NFR-NH-005: Graceful Shutdown
+- SIGTERM → finish current command → exit(0)
+- SIGKILL after `shutdownGracePeriod` (default 5s)
 
-### NFR-NH-003: Memory Usage
+---
 
-The idle host process MUST consume no more than 30MB RSS. During active command execution, memory MAY spike to 100MB.
+## Security Requirements
 
-### NFR-NH-004: Platform Support
+### SEC-NH-001: No Shell Execution
+```typescript
+// ALWAYS
+await execFile(cliPath, ['theme', 'push', '--theme', themePath], { timeout: 30000, shell: false });
 
-The bundled host binary MUST run on:
-- macOS (arm64, x64) — primary development platform
-- Linux (x64) — CI/CD
-- Windows is NOT supported (nube-cli may not be available)
+// NEVER
+await exec(`nube theme push --theme "${themePath}"`); // ❌ SHELL INJECTION
+```
+
+### SEC-NH-002: Path Validation
+```typescript
+function validateThemePath(input: string, config: HostConfig): Result<string, DomainError> {
+  const normalized = path.normalize(input);
+  if (normalized.includes('..')) return err({ _tag: 'PathTraversal' });
+
+  const resolved = path.resolve(normalized);
+  const allowed = config.security.allowedBasePaths.some((base) =>
+    resolved.startsWith(path.resolve(base))
+  );
+  if (!allowed) return err({ _tag: 'PathNotAllowed', path: resolved });
+
+  if (input.length > config.security.maxParamLength) {
+    return err({ _tag: 'ParamTooLong', max: config.security.maxParamLength });
+  }
+  return ok(resolved);
+}
+```
+
+### SEC-NH-003: Forbidden Pattern Detection
+```typescript
+const FORBIDDEN = ['..', ';', '&&', '||', '|', '`', '$(', '>', '<'];
+function sanitizeArg(arg: string): Result<string, DomainError> {
+  for (const pattern of FORBIDDEN) {
+    if (arg.includes(pattern)) return err({ _tag: 'ForbiddenPattern', pattern });
+  }
+  return ok(arg);
+}
+```
 
 ---
 
 ## Interface Contracts
 
+### NativeHostPort (Shared)
+
 ```typescript
-// JSON-RPC 2.0 request received from Chrome
-interface NativeHostRequest {
-  jsonrpc: '2.0';
-  method: string;
-  params?: Record<string, unknown>;
-  id: string | number;
+// src/shared/ports/NativeHostPort.ts
+export interface NativeHostPort {
+  readonly connect: () => Promise<Result<void, DomainError>>;
+  readonly disconnect: () => Promise<void>;
+  readonly send<T>(command: string, payload: unknown): Promise<Result<T, DomainError>>;
+  readonly onNotification: (handler: (method: string, params: unknown) => void) => void;
+  readonly healthCheck: () => Promise<Result<HealthResult, DomainError>>;
 }
-
-// JSON-RPC 2.0 response sent to Chrome
-interface NativeHostResponse {
-  jsonrpc: '2.0';
-  result?: CommandResult | HealthResult;
-  error?: {
-    code: number;
-    message: string;
-    data?: Record<string, unknown>;
-  };
-  id: string | number | null;
-}
-
-// Command execution result
-interface CommandResult {
-  success: boolean;
-  command: string;
-  exitCode: number | null;
-  stdout: string;
-  stderr: string;
-  duration: number; // ms
-  previewUrl?: string; // for theme.preview
-}
-
-// Health check result
-interface HealthResult {
-  status: 'ok' | 'degraded' | 'error';
-  version: string;
-  nodeVersion: string;
-  nubeCliAvailable: boolean;
-  nubeCliVersion?: string;
-  uptime: number;
-  warning?: string;
-}
-
-// Native messaging manifest (installed by Chrome)
-interface NativeHostManifest {
-  name: string;
-  description: string;
-  path: string;          // Absolute path to host binary
-  type: 'stdio';
-  allowed_origins: string[];
-}
-
-// Supported JSON-RPC method names
-type NativeHostMethod =
-  | 'system.health'
-  | 'theme.push'
-  | 'theme.preview'
-  | 'theme.watch'
-  | 'theme.watch.stop'
-  | 'system.shutdown';
-
-// JSON-RPC error codes
-const JSON_RPC_ERROR_CODES = {
-  PARSE_ERROR: -32700,
-  INVALID_REQUEST: -32600,
-  METHOD_NOT_FOUND: -32601,
-  INVALID_PARAMS: -32602,
-  INTERNAL_ERROR: -32603,
-  // Custom codes
-  CLI_NOT_FOUND: -32001,
-  COMMAND_TIMEOUT: -32002,
-  PREVIEW_ALREADY_RUNNING: -32000,
-} as const;
 ```
 
----
+### Background Adapter
 
-## Dependencies
+```typescript
+// src/background/NativeHostClient.ts
+export class NativeHostClient implements NativeHostPort {
+  private port: chrome.runtime.Port | null = null;
+  private pending = new Map<string, { resolve: Function; reject: Function }>();
 
-| Module | Direction | Purpose |
-|--------|-----------|---------|
-| `src/shared/messaging.ts` | Imports types | Message type alignment (optional — host uses its own JSON-RPC types) |
-| `child_process` (Node built-in) | Runtime | Execute `nube-cli` commands |
-| `path` (Node built-in) | Runtime | Binary path resolution |
-| `fs` (Node built-in) | Runtime | File existence checks, path discovery |
-| Chrome native messaging | Protocol | stdin/stdout communication format |
+  async connect(): Promise<Result<void, DomainError>> {
+    this.port = chrome.runtime.connectNative('com.tiendanube.theme-devtools');
+    this.port.onMessage.addListener(this.onMessage.bind(this));
+    this.port.onDisconnect.addListener(this.onDisconnect.bind(this));
+    return ok(undefined);
+  }
+
+  async send<T>(command: string, payload: unknown): Promise<Result<T, DomainError>> {
+    const id = crypto.randomUUID();
+    const message = { type: 'NATIVE_COMMAND', id, command, payload };
+    return new Promise((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+      this.port!.postMessage(message);
+      // Timeout 30s
+      setTimeout(() => {
+        if (this.pending.has(id)) {
+          this.pending.delete(id);
+          reject({ _tag: 'MessageTimeout' });
+        }
+      }, 30000);
+    });
+  }
+  // ...
+}
+```
 
 ---
 
 ## Test Scenarios
 
-| ID | Type | Description | Automation |
-|----|------|-------------|------------|
-| T-NH-001 | Unit | JSON-RPC dispatcher routes `theme.push` to correct handler | Vitest with mock handlers |
-| T-NH-002 | Unit | JSON-RPC dispatcher returns error for unknown method | Vitest |
-| T-NH-003 | Unit | JSON-RPC dispatcher returns error for invalid params | Vitest |
-| T-NH-004 | Unit | Path discovery checks `NUBE_CLI_PATH` first | Vitest with env mock |
-| T-NH-005 | Unit | Path discovery falls back to PATH | Vitest with `which` mock |
-| T-NH-006 | Unit | Path discovery returns error when not found | Vitest |
-| T-NH-007 | Unit | Stdin reader parses 4-byte length prefix correctly | Vitest with Buffer mock |
-| T-NH-008 | Unit | Stdout writer formats 4-byte length prefix correctly | Vitest with Buffer mock |
-| T-NH-009 | Unit | Command timeout kills child process after 30s | Vitest with fake timers |
-| T-NH-010 | Unit | Health check returns correct version info | Vitest |
-| T-NH-011 | Integration | stdin/stdout roundtrip: write request → read response | Vitest with pipe mock |
-| T-NH-012 | Integration | `theme.push` executes and returns command result | Vitest with `execFile` mock |
-| T-NH-013 | Integration | Concurrent requests are queued correctly | Vitest |
-| T-NH-014 | Integration | Invalid JSON on stdin returns parse error | Vitest |
-| T-NH-015 | E2E | Host binary starts and responds to health check | Node.js process spawn |
-| T-NH-016 | E2E | Host binary executes real `nube-cli theme --version` | Spawn + assert version output |
-
----
-
-## Error Scenarios
-
-| Error | Cause | Behavior |
-|-------|-------|----------|
-| Stdin pipe broken | Chrome extension disconnects unexpectedly | Host detects EOF on stdin, exits gracefully with code 0 |
-| nube-cli not installed | Developer hasn't installed CLI | All theme commands return `CLI_NOT_FOUND` error with install instructions |
-| Command times out | nube-cli hangs on network request | SIGTERM → 5s wait → SIGKILL, returns `COMMAND_TIMEOUT` error |
-| Disk full during command | nube-cli tries to write but disk is full | Captures stderr, checks exit code, returns error result |
-| Native host manifest invalid | Wrong `allowed_origins` in manifest | Chrome refuses to launch the host; error logged in `chrome://extensions` |
-| Multiple instances | User opens DevTools in multiple tabs | Each tab spawns its own host process (Chrome manages lifecycle) |
+| ID | Type | Description |
+|----|------|-------------|
+| T-NH-001 | Unit | `StdioTransport` parses 4-byte length + JSON-RPC correctly |
+| T-NH-002 | Unit | `CommandBus` dispatches to registered handler |
+| T-NH-003 | Unit | `CommandBus` middleware chain executes in order |
+| T-NH-004 | Unit | `HostConfigSchema` validates valid/invalid configs |
+| T-NH-005 | Unit | `validateThemePath` rejects traversal, allows valid paths |
+| T-NH-006 | Unit | `sanitizeArg` rejects forbidden patterns |
+| T-NH-007 | Unit | `execFile` called with `shell: false` and args array |
+| T-NH-008 | Integration | stdin/stdout roundtrip with JSON-RPC framing |
+| T-NH-009 | Integration | `theme.push` executes nube-cli and parses result |
+| T-NH-010 | Integration | Watch service emits events via notifications |
+| T-NH-011 | E2E | Binary starts, responds to health check |
+| T-NH-012 | E2E | Binary executes real `nube-cli theme --version` |
 
 ---
 
@@ -407,13 +557,36 @@ const JSON_RPC_ERROR_CODES = {
 
 | Requirement | Principle | File |
 |-------------|-----------|------|
-| FR-NH-001 | Chrome native messaging protocol | `src/native-host/main.ts` (readMessage, writeMessage) |
-| FR-NH-002 | JSON-RPC 2.0 | `src/native-host/dispatcher.ts` |
-| FR-NH-003 | nube-cli integration | `src/native-host/commands/themePush.ts` |
-| FR-NH-004 | nube-cli integration | `src/native-host/commands/themePreview.ts` |
-| FR-NH-005 | nube-cli integration | `src/native-host/commands/themeWatch.ts` |
-| FR-NH-006 | Health checking | `src/native-host/commands/systemHealth.ts` |
-| FR-NH-007 | Path discovery | `src/native-host/discovery.ts` |
-| FR-NH-008 | Error resilience | `src/native-host/main.ts` (error boundary) |
-| NFR-NH-001 | Bundle size | `esbuild.config.mjs` (fully bundled CJS) |
-| NFR-NH-004 | Platform support | `tsconfig.native-host.json` (target `node20`) |
+| FR-NH-001 | Chrome native messaging protocol | `StdioTransport.ts` |
+| FR-NH-002 | Command Pattern, Middleware | `CommandBus.ts` |
+| FR-NH-003 | Configuration as code, Zod | `config.ts` |
+| FR-NH-004 | Domain Services, Hexagonal | `ThemeService.ts`, `WatchService.ts` |
+| FR-NH-005 | Streaming, AsyncIterator | `WatchService.ts` |
+| FR-NH-006 | Encapsulation | `StdioTransport.ts` (JSON-RPC internal) |
+| FR-NH-007 | Security by design | `config.ts`, `validateThemePath.ts` |
+| SEC-NH-001 | No shell execution | `CliExecutor.ts` |
+| SEC-NH-002 | Path validation | `validateThemePath.ts` |
+| SEC-NH-003 | Input sanitization | `sanitizeArg.ts` |
+
+---
+
+## Files Created in Scaffold
+
+| Path | Purpose |
+|------|---------|
+| `src/native-host/main.ts` | Entry point — loads config, builds CommandBus, starts StdioTransport |
+| `src/native-host/StdioTransport.ts` | Framed stdin/stdout + JSON-RPC 2.0 |
+| `src/native-host/CommandBus.ts` | Handler registry + middleware pipeline |
+| `src/native-host/config.ts` | `HostConfigSchema` (Zod) + `loadHostConfig()` |
+| `src/native-host/validate.ts` | Path + arg security validators |
+| `src/native-host/CliExecutor.ts` | `execFile` wrapper (timeout, no shell) |
+| `src/native-host/commands/ThemePushCommand.ts` | Theme push handler |
+| `src/native-host/commands/ThemePreviewCommand.ts` | Theme preview handler |
+| `src/native-host/commands/ThemeWatchCommand.ts` | Watch handler (streaming) |
+| `src/native-host/commands/SystemHealthCommand.ts` | Health check handler |
+| `src/native-host/manifest.json` | Native messaging manifest |
+| `src/native-host/package.json` | Minimal deps (zod only) |
+
+---
+
+*End of Native Host Spec*

@@ -20,6 +20,54 @@ The `scaffold` change delivers ~1,500 lines across ~50 files. Per SDD review bud
 
 ---
 
+## PR Tracking — Status | Owner | Coverage
+
+| PR | Scope | Status | Owner | Coverage (unit/int) | DoR ✅ | DoD ✅ |
+|----|-------|--------|-------|---------------------|--------|--------|
+| #1 | Root Config + Shared Core | Not Started | @backend-lead | — / — | ☐ | ☐ |
+| #2 | Manifest + Background SW | Not Started | @backend-lead | — / — | ☐ | ☐ |
+| #3 | DevTools Panel (Preact) | Not Started | @frontend-lead | — / — | ☐ | ☐ |
+| #4 | Content Inspector + Native Host | Not Started | @fullstack-lead | — / — | ☐ | ☐ |
+| #5 | Cross-Cutting + CI/CD + Zip | Not Started | @devops-lead | — / — | ☐ | ☐ |
+
+### Sub-tasks PR #1 (granular tracking)
+
+| Task | Status | Owner | Coverage | DoR | DoD |
+|------|--------|-------|----------|-----|-----|
+| package.json + scripts | Not Started | @backend-lead | 80/80/70 | ☐ | ☐ |
+| tsconfig (project refs) | Not Started | @backend-lead | 80/80/70 | ☐ | ☐ |
+| esbuild.config.mjs | Not Started | @backend-lead | 80/80/70 | ☐ | ☐ |
+| vitest.config.ts + setup | Not Started | @backend-lead | 80/80/70 | ☐ | ☐ |
+| eslint + prettier | Not Started | @backend-lead | 80/80/70 | ☐ | ☐ |
+| shared/result.ts + tests | Not Started | @backend-lead | 80/80/70 | ☐ | ☐ |
+| shared/errors.ts + tests | Not Started | @backend-lead | 80/80/70 | ☐ | ☐ |
+| shared/messaging.ts + tests | Not Started | @backend-lead | 80/80/70 | ☐ | ☐ |
+| shared/di.ts + tests | Not Started | @backend-lead | 80/80/70 | ☐ | ☐ |
+| shared/logger.ts + tests | Not Started | @backend-lead | 80/80/70 | ☐ | ☐ |
+| shared/ports/* + tests | Not Started | @backend-lead | 80/80/70 | ☐ | ☐ |
+| shared/storage.ts + tests | Not Started | @backend-lead | 80/80/70 | ☐ | ☐ |
+| shared/utils.ts + tests | Not Started | @backend-lead | 80/80/70 | ☐ | ☐ |
+| shared/types/chrome.d.ts | Not Started | @backend-lead | N/A | ☐ | ☐ |
+| shared/global.d.ts | Not Started | @backend-lead | N/A | ☐ | ☐ |
+| vitest.setup.ts (chrome mocks) | Not Started | @backend-lead | N/A | ☐ | ☐ |
+| .github/workflows/ci.yml | Not Started | @devops-lead | N/A | ☐ | ☐ |
+| .github/dependabot.yml | Not Started | @devops-lead | N/A | ☐ | ☐ |
+| README.md + CHANGELOG.md | Not Started | @devops-lead | N/A | ☐ | ☐ |
+
+---
+
+## Definition of Ready / Definition of Done (Reference)
+
+**DoR** (before starting any PR): Spec exists + ACs clear + traceability + deps resolved + env ready + test skeletons + mocks ready + ADR if needed + estimation.
+
+**DoD** (before merge to main): Spec compliance ✅ + code quality (lint/typecheck/format) + tests pass + coverage ≥ targets (lines 80%, functions 80%, branches 70%) + build + arch validation + security audit + docs updated + agent self-eval + human approval.
+
+See `00-architecture-compliance.md` for full DoR/DoD checklists and SDD Phase Gates.
+
+---
+
+## Overview
+
 ## PR #1: Root Config + Shared Core
 
 ### Goal

@@ -12,6 +12,40 @@ Define the service worker skeleton that acts as the central message broker for t
 
 ---
 
+## Architecture (Hexagonal Compliance)
+
+The Background SW is an **Adapter** in the Hexagonal architecture:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    BACKGROUND SW (Adapter)                      │
+├─────────────────────────────────────────────────────────────────┤
+│  MessageRouter          │  Routes messages by type              │
+│  ┌────────────────────┐ │  ┌────────────────────────────────┐  │
+│  │ registerHandler()  │ │  │ MessageRegistry (shared)       │  │
+│  └──────────┬──────────┘ │  └────────────────────────────────┘  │
+│             │            │  ┌────────────────────────────────┐  │
+│             ▼            │  │ Ports (injected via DI)        │  │
+│  ┌────────────────────┐  │  │ ┌──────────────┐ ┌───────────┐ │  │
+│  │ NativeHostClient   │  │  │ │ StoragePort  │ │NativeHostPort│
+│  │ (implements Native │  │  │ └──────────────┘ └───────────┘ │  │
+│  │  HostPort)         │  │  └────────────────────────────────┘  │
+│  └────────────────────┘  │                                      │
+│             │            │  ┌────────────────────────────────┐  │
+│             ▼            │  │ Domain Services (via ports)    │  │
+│  ┌────────────────────┐  │  │ ┌──────────────┐ ┌───────────┐ │  │
+│  │ ChromeStorage      │  │  │ │ ThemeService │ │InspectSvc  │ │
+│  │ Adapter            │  │  │ └──────────────┘ └───────────┘ │  │
+│  │ (implements        │  │  └────────────────────────────────┘  │
+│  │  StoragePort)      │  │                                      │
+│  └────────────────────┘  └──────────────────────────────────────┘
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Key**: Background SW knows **nothing about JSON-RPC**. It uses `NativeHostPort.send<T>(command, payload): Promise<Result<T>>`.
+
+---
+
 ## Functional Requirements
 
 ### FR-BG-001: Service Worker Initialization
@@ -37,9 +71,11 @@ The service worker MUST register the following lifecycle listeners on `install` 
 - THEN the service worker MUST log: `[Tiendanube DevTools] Updated from 0.1.0 to 0.2.0`
 - AND previous settings MUST be preserved
 
-### FR-BG-002: Message Router
+---
 
-The service worker MUST implement a message router that:
+### FR-BG-002: Message Router (via MessageRegistry)
+
+The service worker MUST use the shared `MessageRegistry` to route messages:
 
 1. Receives messages from all adapters (panel, content script, native host)
 2. Routes messages based on a `type` discriminant
@@ -68,7 +104,9 @@ The service worker MUST implement a message router that:
 - THEN the `onMessage` listener MUST return `true` to keep the channel open
 - AND `sendResponse` MUST be called within 5 minutes (Chrome's limit)
 
-### FR-BG-003: Native Messaging Bridge
+---
+
+### FR-BG-003: Native Messaging Bridge (via NativeHostPort)
 
 The service worker MUST manage a connection to the native host via `chrome.runtime.connectNative`.
 
@@ -78,75 +116,45 @@ The service worker MUST manage a connection to the native host via `chrome.runti
 
 - GIVEN the native messaging host is installed
 - WHEN the service worker calls `chrome.runtime.connectNative("com.tiendanube.theme-devtools")`
-- THEN a `Port` object MUST be created
-- AND the service worker MUST store the port reference
-- AND MUST listen for `port.onDisconnect` to detect crashes
+- THEN a `Port` MUST be established
+- AND the service worker MUST register `onMessage` and `onDisconnect` listeners
+- AND MUST send a health check on connect
 
-#### Scenario: Native host is not installed
+#### Scenario: Native host sends response
 
-- GIVEN the native host is NOT installed
-- WHEN `chrome.runtime.connectNative` is called
-- THEN `chrome.runtime.lastError` MUST be set
-- AND the service worker MUST log: `[Tiendanube DevTools] Native host not found`
-- AND MUST set `nativeHostStatus` to `"unavailable"` in storage
+- GIVEN the native host sends a JSON-RPC response
+- WHEN the port's `onMessage` fires
+- THEN the service worker MUST correlate by `correlationId`
+- AND resolve the pending promise in `NativeHostClient`
 
-#### Scenario: Native host disconnects unexpectedly
+#### Scenario: Native host disconnects
 
-- GIVEN the native host crashes
+- GIVEN the native host process exits unexpectedly
 - WHEN `port.onDisconnect` fires
-- THEN the service worker MUST log the disconnection
-- AND MUST attempt to reconnect with exponential backoff (1s, 2s, 4s, max 30s)
-- AND MUST update `nativeHostStatus` to `"disconnected"`
+- THEN the service worker MUST set native host status to `"disconnected"`
+- AND attempt reconnection with exponential backoff (max 3 retries)
+- AND notify DevTools panel via `NATIVE_HOST_STATUS_CHANGED` message
 
-### FR-BG-004: Alarm Management
+---
 
-The service worker MUST register an alarm to periodically check native host health.
+### FR-BG-004: Settings Management (via StoragePort)
 
-**Traceability**: Extension patterns — alarms for background tasks.
+The service worker MUST manage extension settings through the `StoragePort` interface (implemented by `ChromeStorageAdapter`).
 
-#### Scenario: Health check alarm registered
+**Traceability**: Hexagonal — Adapter implements Port; no direct `chrome.storage` calls.
 
-- GIVEN the service worker starts
-- WHEN `chrome.alarms.create` is called
-- THEN an alarm named `"native-host-health"` MUST be created
-- AND it MUST fire every 30 seconds
-
-#### Scenario: Health check alarm fires
-
-- GIVEN the `"native-host-health"` alarm fires
-- WHEN the native host is connected
-- THEN the service worker MUST send a `{ type: "PING" }` message via the native port
-- AND expect a `{ type: "PONG" }` response within 5 seconds
-- AND update `nativeHostStatus` accordingly
-
-### FR-BG-005: Panel Connection Tracking
-
-The service worker MUST track open DevTools panel connections via `chrome.runtime.onConnect`.
-
-#### Scenario: Panel connects
-
-- GIVEN a DevTools panel opens
-- WHEN `chrome.runtime.onConnect` fires with `sender.tab.id` matching DevTools
-- THEN the service worker MUST add the port to an internal `panelConnections` map
-- AND MUST listen for `port.onDisconnect` to remove it
-
-#### Scenario: Multiple panels
-
-- GIVEN two DevTools windows are open
-- WHEN both panels connect
-- THEN the service worker MUST maintain two separate port entries
-- AND messages from one panel MUST NOT be sent to the other
-
-### FR-BG-006: Storage Sync
-
-The service worker MUST initialize and manage default settings in `chrome.storage.local`.
+#### Settings Schema
 
 ```typescript
 interface ExtensionSettings {
-  inspectModeEnabled: boolean;      // Default: false
-  themePath: string;                // Default: ""
-  autoReload: boolean;              // Default: false
-  nativeHostStatus: 'connected' | 'disconnected' | 'unavailable';  // Default: 'unavailable'
+  themeMode: 'local' | 'remote';      // Default: 'remote'
+  themePath: string;                   // Default: ''
+  inspectMode: boolean;                // Default: false
+  nativeHost: {
+    maxRetries: number;                // Default: 3
+    retryDelayMs: number;              // Default: 1000
+  };
+  schemaVersion: string;               // For migrations
 }
 ```
 
@@ -166,49 +174,38 @@ interface ExtensionSettings {
 
 ---
 
-## Non-Functional Requirements
+### FR-BG-005: Alarm Scheduler
 
-### NFR-BG-001: Service Worker Lifecycle
+The service worker MUST use `chrome.alarms` for periodic tasks.
 
-The service worker MUST NOT rely on persistent state. All state MUST be restored from `chrome.storage.local` on startup.
+| Alarm | Interval | Purpose |
+|-------|----------|---------|
+| `native-host-health` | 30 seconds | Check native host connectivity |
+| `theme-reload-check` | 5 minutes | Poll for theme changes (remote mode) |
 
-**Traceability**: MV3 service worker best practices — ephemeral by design.
+#### Scenario: Native host health check
 
-### NFR-BG-002: Idle Shutdown Handling
-
-The service worker MUST handle Chrome's MV3 idle shutdown (30s after last event) gracefully. On restart, it MUST reinitialize all connections.
-
-### NFR-BG-003: Message Size Limit
-
-Messages through `chrome.runtime.sendMessage` MUST NOT exceed Chrome's 64KB payload limit. The service worker SHALL reject messages exceeding this limit with an descriptive error.
+- GIVEN the alarm fires
+- WHEN the service worker calls `NativeHostPort.healthCheck()`
+- THEN it MUST update internal status
+- AND broadcast `NATIVE_HOST_STATUS_CHANGED` to all connected panels
 
 ---
 
-## Interface Contracts
+### FR-BG-006: Message Routing Table
 
-```typescript
-// Ports managed by the service worker
-interface ServiceWorkerPorts {
-  panelConnections: Map<string, chrome.runtime.Port>;
-  nativePort: chrome.runtime.Port | null;
-}
-
-// Native host health status
-type NativeHostStatus = 'connected' | 'disconnected' | 'unavailable';
-
-// Service worker is the message router — it receives all messages
-// and dispatches to the appropriate handler.
-interface MessageRouter {
-  handleMessage(
-    message: ExtensionMessage,
-    sender: chrome.runtime.MessageSender,
-    sendResponse: (response: ExtensionMessage) => void
-  ): boolean;  // true = async, false = sync
-
-  handleNativeMessage(message: NativeMessage): void;
-  handlePanelDisconnect(port: chrome.runtime.Port): void;
-}
-```
+| Message Type | Route | Handler |
+|--------------|-------|---------|
+| `PAGE_DETECTED` | Content → Background | Log + store page type |
+| `HOVER_EVENT` | Content → Background | Forward to panel (if connected) |
+| `ACTIVATE_INSPECT` | Panel → Background → Content | Relay to content script |
+| `DEACTIVATE_INSPECT` | Panel → Background → Content | Relay to content script |
+| `SET_MODE` | Panel → Background | Update storage + notify content |
+| `RELOAD_THEME` | Panel → Background → Native Host | Dispatch via NativeHostPort |
+| `GET_THEME_INFO` | Panel → Background | Return current theme status |
+| `NATIVE_COMMAND` | Background → Native Host | Dispatch via NativeHostPort |
+| `NATIVE_RESPONSE` | Native Host → Background | Resolve pending promise |
+| `NATIVE_NOTIFICATION` | Native Host → Background | Broadcast to panel (watch events) |
 
 ---
 
@@ -259,7 +256,6 @@ export class ChromeStorageAdapter implements StoragePort {
   }
 
   observe<T>(key: string): Observable<Result<T | null, DomainError>> {
-    // Returns observable that emits on storage changes
     const subject = new BehaviorSubject<Result<T | null, DomainError>>(ok(null));
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === 'local' && changes[key]) {
@@ -283,6 +279,56 @@ container.register(MessageRouter, () => new MessageRouter(container.resolve(Stor
 
 ---
 
+### FR-BG-008: NativeHostPort Implementation
+
+The background service worker's `NativeHostClient` MUST implement the `NativeHostPort` interface from `src/shared/ports/NativeHostPort.ts` (defined in `07-shared-core.md`).
+
+**Port Interface** (from `src/shared/ports/NativeHostPort.ts`):
+```typescript
+export interface NativeHostPort {
+  connect(): Promise<Result<void, DomainError>>;
+  disconnect(): Promise<void>;
+  send<T>(command: string, payload: unknown): Promise<Result<T, DomainError>>;
+  onNotification: (handler: (method: string, params: unknown) => void) => void;
+  healthCheck(): Promise<Result<HealthResult, DomainError>>;
+}
+```
+
+**Adapter Implementation** (`src/background/NativeHostClient.ts`):
+```typescript
+export class NativeHostClient implements NativeHostPort {
+  private port: chrome.runtime.Port | null = null;
+  private pending = new Map<string, { resolve: Function; reject: Function }>();
+
+  async connect(): Promise<Result<void, DomainError>> {
+    this.port = chrome.runtime.connectNative('com.tiendanube.theme-devtools');
+    this.port.onMessage.addListener(this.onMessage.bind(this));
+    this.port.onDisconnect.addListener(this.onDisconnect.bind(this));
+    return ok(undefined);
+  }
+
+  async send<T>(command: string, payload: unknown): Promise<Result<T, DomainError>> {
+    const id = crypto.randomUUID();
+    const message = { type: 'NATIVE_COMMAND', id, command, payload };
+    return new Promise((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+      this.port!.postMessage(message);
+      setTimeout(() => {
+        if (this.pending.has(id)) {
+          this.pending.delete(id);
+          reject({ _tag: 'MessageTimeout' });
+        }
+      }, 30000);
+    });
+  }
+  // ... onMessage, onDisconnect, healthCheck
+}
+```
+
+**Traceability**: Hexagonal — Adapter implements Port (SRP, DIP). Background SW is the adapter; NativeHostPort is the contract.
+
+---
+
 ## Dependencies
 
 | Module | Direction | Purpose |
@@ -290,7 +336,67 @@ container.register(MessageRouter, () => new MessageRouter(container.resolve(Stor
 | `src/shared/messaging.ts` | Imports types | Discriminated message types |
 | `src/shared/storage.ts` | Imports functions | Settings persistence |
 | `src/shared/utils.ts` | Imports helpers | Error formatting, logging |
+| `src/shared/ports/StoragePort.ts` | Implements | Settings persistence contract |
+| `src/shared/ports/NativeHostPort.ts` | Implements | Native host communication contract |
+| `src/shared/ports/MessagingPort.ts` | Implements | Message routing contract |
+| `src/shared/validation.ts` | Imports | Zod schemas for message validation |
+| `src/shared/logger.ts` | Imports | Structured logging |
+| `src/shared/di.ts` | Uses | DI container for port registration |
 | `src/native-host/` | Communicates via port | External system via native messaging |
+
+---
+
+## Non-Functional Requirements
+
+### NFR-BG-001: Service Worker Lifecycle
+
+The service worker MUST NOT rely on persistent state. All state MUST be restored from `chrome.storage.local` on startup.
+
+**Traceability**: MV3 service worker best practices — ephemeral by design.
+
+### NFR-BG-002: Idle Shutdown Handling
+
+The service worker MUST handle Chrome's MV3 idle shutdown (30s after last event) gracefully. On restart, it MUST reinitialize all connections.
+
+### NFR-BG-003: Message Size Limit
+
+Messages through `chrome.runtime.sendMessage` MUST NOT exceed Chrome's 64KB payload limit. The service worker SHALL reject messages exceeding this limit with a descriptive error.
+
+### NFR-BG-004: Bundle Size
+
+- Service Worker bundle **≤ 15 KB gzipped** (enforced in CI via `esbuild --analyze`)
+
+---
+
+## Interface Contracts
+
+```typescript
+// Ports managed by the service worker
+interface ServiceWorkerPorts {
+  panelConnections: Map<string, chrome.runtime.Port>;
+  nativePort: chrome.runtime.Port | null;
+}
+
+type NativeHostStatus = 'connected' | 'disconnected' | 'unavailable';
+
+interface MessageRouter {
+  handleMessage(
+    message: ExtensionMessage,
+    sender: chrome.runtime.MessageSender,
+    sendResponse: (response: ExtensionMessage) => void
+  ): boolean;
+
+  handleNativeMessage(message: NativeMessage): void;
+  handlePanelDisconnect(port: chrome.runtime.Port): void;
+}
+
+interface NativeHostClient {
+  connect(): Promise<Result<void, DomainError>>;
+  disconnect(): Promise<void>;
+  send<T>(command: string, payload: unknown): Promise<Result<T, DomainError>>;
+  healthCheck(): Promise<Result<{ status: 'ok'; version: string }, DomainError>>;
+}
+```
 
 ---
 
@@ -330,6 +436,15 @@ container.register(MessageRouter, () => new MessageRouter(container.resolve(Stor
 | FR-BG-002 | Open/Closed — Discriminated Unions | `service-worker.ts`, `messaging.ts` |
 | FR-BG-003 | Hexagonal — External System Bridge | `service-worker.ts` |
 | FR-BG-004 | Extension Patterns | `service-worker.ts` |
-| FR-BG-005 | State Management | `service-worker.ts` |
+| FR-BG-005 | State Management | `service-worker.ts`, `storage.ts` |
 | FR-BG-006 | SRP — Single Store Responsibility | `service-worker.ts`, `storage.ts` |
+| **FR-BG-007** | **Hexagonal — Port/Adapter (StoragePort)** | **`ChromeStorageAdapter.ts`** |
+| **FR-BG-008** | **Hexagonal — Port/Adapter (NativeHostPort)** | **`NativeHostClient.ts`** |
 | NFR-BG-001 | MV3 Best Practices | `service-worker.ts` |
+| NFR-BG-002 | MV3 Best Practices | `service-worker.ts` |
+| NFR-BG-003 | Chrome Limits | `service-worker.ts` |
+| NFR-BG-004 | Performance | `esbuild.config.mjs` |
+
+---
+
+*End of Background Service Worker Spec*
