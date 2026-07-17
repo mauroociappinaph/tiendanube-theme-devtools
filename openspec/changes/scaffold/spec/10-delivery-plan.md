@@ -492,10 +492,6 @@ If any PR breaks `main`:
 **DoR Gate**: [ ] Spec exists + ACs clear + traceability + deps resolved + env ready + test skeletons + mocks ready + ADR if needed + estimation
 **DoD Gate**: [ ] Spec compliance ✅ + code quality (lint/typecheck/format) + tests pass + coverage ≥ targets (lines 80%, functions 80%, branches 70%, statements 80%) + build + arch validation + security audit + docs updated + agent self-eval + human approval
 - [ ] `src/content/inspector.ts` + `InspectorController`, `InspectorStateMachine`, `PageDetector`, `LiquidMapper`, `HoverHandler`, `BadgeManager`, `SPANavigationHandler`, `MessageHandler`, `Throttle`
-- [ ] `src/native-host/main.ts` + `CommandDispatcher`, `StdioTransport`
-- [ ] `src/native-host/package.json`
-- [ ] Native host security (FR-POL-013)
-- [ ] ADR for native host path discovery (FR-POL-018)
 
 ### PR #6: Cross-Cutting + CI/CD + Zip + Icons + README
 **DoR Gate**: [ ] Spec exists + ACs clear + traceability + deps resolved + env ready + test skeletons + mocks ready + ADR if needed + estimation
