@@ -68,58 +68,6 @@ See `00-architecture-compliance.md` for full DoR/DoD checklists and SDD Phase Ga
 
 ---
 
-## Overview
-
-## PR #1: Root Config + Shared Core
-
-### Goal
-Establish tooling, build pipeline, and shared domain layer. After merge: `npm install && npm run build` works (produces empty `dist/`).
-
-### Files Created
-| Path | Purpose | Est. Lines |
-|------|---------|------------|
-| `package.json` | Workspace root + scripts + deps | 55 |
-| `tsconfig.json` | Project references root | 25 |
-| `tsconfig.extension.json` | Extension layer TS config | 30 |
-| `tsconfig.native-host.json` | Native host TS config | 25 |
-| `esbuild.config.mjs` | Multi-entry build (4 entry points) | 80 |
-| `vitest.config.ts` | Test config (jsdom + node) | 35 |
-| `.eslintrc.cjs` | ESLint + TypeScript + Preact | 45 |
-| `.prettierrc` / `.prettierignore` | Formatting | 15 |
-| `src/shared/result.ts` | Result/Either pattern | 45 |
-| `src/shared/errors.ts` | DomainError discriminated union | 50 |
-| `src/shared/messaging.ts` | Envelope, Request, Response types | 55 |
-| `src/shared/di.ts` | Lightweight DI container | 50 |
-| `src/shared/logger.ts` | Logger interface + ConsoleLogger | 40 |
-| `src/shared/ports/StoragePort.ts` | Port interface | 15 |
-| `src/shared/ports/MessagingPort.ts` | Port interface | 15 |
-| `src/shared/ports/NativeHostPort.ts` | Port interface | 15 |
-| `src/shared/types/chrome.d.ts` | Chrome API augmentations | 25 |
-| `src/shared/utils.ts` | Pure utilities (debounce, uuid, etc.) | 60 |
-| `src/types/global.d.ts` | Global type declarations | 10 |
-
-### Acceptance Criteria (from 09-acceptance-criteria.md)
-- AC-RC-01..08, AC-SH-01..04, AC-CC-01..03
-
-### CI Gates (must pass before PR #2 can be reviewed)
-```yaml
-jobs:
-  lint: eslint src/
-  typecheck: tsc --noEmit -p tsconfig.extension.json -p tsconfig.native-host.json
-  test: vitest run
-  build: npm run build  # produces dist/ (empty but valid)
-```
-
-### Validation
-```bash
-npm ci && npm run build  # dist/manifest.json, dist/background/, dist/devtools/, dist/content/
-npm run typecheck        # 0 errors
-npm run lint             # 0 warnings
-npm run test             # skeleton tests pass
-```
-
----
-
 ## PR #1: Root Config + Shared Core
 
 ### Goal
@@ -141,15 +89,16 @@ Establish tooling, build pipeline, and shared domain layer. After merge: `npm in
 | `.prettierrc` / `.prettierignore` | Formatting | 15 |
 | `src/shared/result.ts` | Result/Either pattern | 45 |
 | `src/shared/errors.ts` | DomainError discriminated union | 50 |
-| `src/shared/messaging.ts` | Envelope, Request, Response types | 55 |
+| `src/shared/messaging.ts` | Envelope, Request, Response types (canonical) | 55 |
 | `src/shared/di.ts` | Lightweight DI container | 50 |
-| `src/shared/logger.ts` | Logger interface + ConsoleLogger | 40 |
-| `src/shared/ports/StoragePort.ts` | Port interface | 15 |
-| `src/shared/ports/MessagingPort.ts` | Port interface | 15 |
-| `src/shared/ports/NativeHostPort.ts` | Port interface | 15 |
+| `src/shared/logger.ts` | Logger interface + ConsoleLogger/FileLogger/MemoryLogger | 40 |
+| `src/shared/ports/StoragePort.ts` | Port interface (canonical) | 15 |
+| `src/shared/ports/MessagingPort.ts` | Port interface (canonical) | 15 |
+| `src/shared/ports/NativeHostPort.ts` | Port interface (canonical) | 15 |
 | `src/shared/types/chrome.d.ts` | Chrome API augmentations | 25 |
 | `src/shared/utils.ts` | Pure utilities (debounce, uuid, etc.) | 60 |
 | `src/types/global.d.ts` | Global type declarations | 10 |
+| `.env.example` | Env template (FR-POL-011) | 10 |
 
 ### Acceptance Criteria (from 09-acceptance-criteria.md)
 - AC-RC-01..08, AC-SH-01..04, AC-CC-01..03
@@ -173,76 +122,6 @@ npm run test             # skeleton tests pass
 
 ---
 
-## Cross-Adapter Integration Tests (New Section)
-
-### Goal
-Ensure end-to-end message flows work across all adapters: Panel → Background → Native Host → Background → Panel, and Panel → Background → Content Script.
-
-### Files Created (added to PR #5 scope)
-| Path | Purpose | Est. Lines |
-|------|---------|------------|
-| `tests/integration/panel-bg-native.test.ts` | Panel → BG → Native Host round-trip | 60 |
-| `tests/integration/panel-bg-content.test.ts` | Panel → BG → Content Script flow | 50 |
-| `tests/integration/storage-sync.test.ts` | Storage sync across adapters | 40 |
-| `tests/e2e/panel-load.test.ts` | Playwright: panel loads in Chrome | 35 |
-| `tests/e2e/theme-reload.test.ts` | Playwright: reload theme flow | 45 |
-| `tests/e2e/inspect-mode.test.ts` | Playwright: inspect mode flow | 45 |
-| `playwright.config.ts` | Playwright config (Chrome extension) | 30 |
-
-### Test Scenarios
-
-| Test ID | Type | Description |
-|---------|------|-------------|
-| IT-001 | Integration | Panel sends RELOAD_THEME → BG → Native Host → BG → Panel status updates |
-| IT-002 | Integration | Panel sends SET_MODE → BG → Storage → Content script receives |
-| IT-003 | Integration | Native host health check → BG → Panel status bar updates |
-| IT-004 | Integration | Content script hover → Badge injected → Panel status updates |
-| E2E-001 | E2E | Extension loads, DevTools panel renders, status bar shows "Not connected" |
-| E2E-002 | E2E | Click Reload Theme → Native host executes → Status shows success |
-| E2E-003 | E2E | Enable Inspect Mode → Hover element → Badge shows Liquid file name |
-
-### Playwright Config (Chrome Extension)
-
-```typescript
-// playwright.config.ts
-import { defineConfig, devices } from '@playwright/test';
-
-export default defineConfig({
-  testDir: './tests/e2e',
-  fullyParallel: true,
-  retries: 2,
-  workers: 1,
-  use: {
-    baseURL: 'https://tiendanube.com',
-    trace: 'on-first-retry',
-    screenshot: 'only-on-failure',
-  },
-  projects: [
-    {
-      name: 'chromium-extension',
-      use: {
-        ...devices['Desktop Chrome'],
-        launchOptions: {
-          args: [
-            '--disable-extensions-except=/path/to/extension',
-            '--load-extension=/path/to/extension',
-            '--no-first-run',
-            '--no-default-browser-check',
-          ],
-        },
-      },
-    },
-  ],
-  webServer: {
-    command: 'npm run dev:storefront', // or use live store
-    url: 'https://tiendanube.com',
-    reuseExistingServer: true,
-  },
-});
-```
-
----
-
 ## PR #2: Manifest + Background Service Worker
 
 ### Goal
@@ -255,8 +134,8 @@ Generate valid Manifest V3, register Service Worker, implement message routing a
 | `src/shared/types/manifest.ts` | `defineManifest()` helper + types | 30 |
 | `src/background/service-worker.ts` | SW entry: router, alarms, native host client | 120 |
 | `src/background/MessageRouter.ts` | Routes messages between panel/content/native | 80 |
-| `src/background/NativeHostClient.ts` | Adapter for NativeHostPort (stdio JSON-RPC) | 75 |
-| `src/background/ChromeStorageAdapter.ts` | Adapter for StoragePort | 35 |
+| `src/background/NativeHostClient.ts` | Adapter for NativeHostPort (canonical) | 75 |
+| `src/background/ChromeStorageAdapter.ts` | Adapter for StoragePort (canonical) | 35 |
 | `src/background/alarms.ts` | Theme reload check alarm | 25 |
 | `src/native-host/manifest.json` | Native messaging host manifest | 15 |
 
@@ -281,17 +160,22 @@ Generate valid Manifest V3, register Service Worker, implement message routing a
 ## PR #3: Native Host
 
 ### Goal
-Native messaging host binary that responds to PING and executes nube-cli commands. Standalone — no Chrome dependencies needed.
+Native messaging host binary that responds to health checks and executes nube-cli commands. Standalone — no Chrome dependencies needed.
 
 ### Files Created
 | Path | Purpose | Est. Lines |
 |------|---------|------------|
 | `src/native-host/main.ts` | CLI entry: health, push, preview, watch | 90 |
-| `src/native-host/CommandDispatcher.ts` | JSON-RPC 2.0 dispatch | 40 |
-| `src/native-host/NubeCliExecutor.ts` | Spawns nube-cli, timeout, parsing | 50 |
-| `src/native-host/StdioTransport.ts` | stdin/stdout JSON-RPC framing | 35 |
-| `src/native-host/FileStorageAdapter.ts` | StoragePort adapter (file-based) | 25 |
-| `src/native-host/package.json` | Native host deps (minimal) | 15 |
+| `src/native-host/StdioTransport.ts` | Framed stdin/stdout + JSON-RPC 2.0 | 35 |
+| `src/native-host/CommandBus.ts` | Handler registry + middleware pipeline | 40 |
+| `src/native-host/config.ts` | `HostConfigSchema` (Zod) + `loadHostConfig()` | 35 |
+| `src/native-host/validate.ts` | Path + arg security validators | 25 |
+| `src/native-host/CliExecutor.ts` | `execFile` wrapper (timeout, no shell) | 30 |
+| `src/native-host/commands/ThemePushCommand.ts` | Theme push handler | 30 |
+| `src/native-host/commands/ThemePreviewCommand.ts` | Theme preview handler | 30 |
+| `src/native-host/commands/ThemeWatchCommand.ts` | Watch handler (streaming) | 35 |
+| `src/native-host/commands/SystemHealthCommand.ts` | Health check handler | 25 |
+| `src/native-host/package.json` | Native host deps (minimal: zod) | 15 |
 
 ### Acceptance Criteria
 - AC-NH-01..07
@@ -314,7 +198,7 @@ node dist/native-host/host.node.js push --theme-id 123
 ## PR #4: DevTools Panel (Preact)
 
 ### Goal
-Register DevTools panel, render Preact UI with stub components for: Local/Remote toggle, Reload Theme button, Inspect Mode toggle, Status Bar. **Global reactive store with Preact Signals for shared panel state.** Requires Background SW (PR #2) and Native Host (PR #3).
+Register DevTools panel, render Preact UI with components: Local/Remote toggle, Reload Theme button, Inspect Mode toggle, Status Bar. **Global reactive store with Preact Signals for shared panel state.** Requires Background SW (PR #2) and Native Host (PR #3).
 
 ### Files Created
 | Path | Purpose | Est. Lines |
@@ -352,23 +236,51 @@ Register DevTools panel, render Preact UI with stub components for: Local/Remote
 
 ---
 
-## PR #5: Cross-Cutting + CI/CD + Zip + Icons + README
+## PR #5: Content Inspector
 
 ### Goal
-Wire cross-cutting concerns (Result pattern enforcement, DI wiring, logging, CSP), full CI pipeline, Chrome Web Store zip, icons, updated docs.
+Content script detects Tiendanube pages, hover → badge with Liquid file name. Requires Background SW (PR #2) and DevTools Panel (PR #4).
 
 ### Files Created
 | Path | Purpose | Est. Lines |
 |------|---------|------------|
-| `src/shared/storage.ts` | Chrome storage wrapper (Result-based) | 45 |
-| `src/background/ConsoleLogger.ts` | Logger transport (background) | 20 |
-| `src/devtools/panel/ConsoleLogger.ts` | Logger transport (panel) | 20 |
-| `src/native-host/FileLogger.ts` | Logger transport (native host) | 25 |
+| `src/content/inspector.ts` | Entry point | 40 |
+| `src/content/InspectorController.ts` | Orchestrator + state machine | 60 |
+| `src/content/InspectorStateMachine.ts` | State machine: idle→detecting→ready→inspecting→cleaning | 50 |
+| `src/content/PageDetector.ts` | Page classification (storefront/admin/checkout/unknown) | 50 |
+| `src/content/LiquidMapper.ts` | Pure function: element → LiquidFileMapping | 50 |
+| `src/content/HoverHandler.ts` | Throttled hover (150ms), IntersectionObserver, RAF positioning | 60 |
+| `src/content/BadgeManager.ts` | Interface + DOM implementation (inject, position, cleanup) | 45 |
+| `src/content/SPANavigationHandler.ts` | MutationObserver + history.pushState patching | 40 |
+| `src/content/MessageHandler.ts` | Message routing: ACTIVATE/DEACTIVATE_INSPECT, PAGE_DETECTED, HOVER_EVENT | 50 |
+| `src/content/Throttle.ts` | 150ms debounce utility + RAF helpers | 15 |
+
+### Acceptance Criteria
+- AC-CI-01..06
+
+### CI Gates (extends PR #1-4)
+- Content script bundle ≤ 10 KB gzipped
+
+---
+
+## PR #6: Cross-Cutting + CI/CD + Zip + Icons + README
+
+### Goal
+Wire cross-cutting concerns (Result pattern enforcement, DI wiring, logging transports, CSP), full CI pipeline, Chrome Web Store zip, icons, updated docs.
+
+### Files Created
+| Path | Purpose | Est. Lines |
+|------|---------|------------|
+| `src/shared/storage.ts` | Chrome storage wrapper (Result-based, implements StoragePort) | 45 |
 | `.github/workflows/ci.yml` | Full CI: lint, typecheck, test, build, zip | 80 |
-| `.github/dependabot.yml` | Weekly dependency updates | 15 |
+| `.github/workflows/build-native.yml` | Native host cross-compilation (Linux/macOS/Windows) | 30 |
+| `.github/workflows/release.yml` | Release automation | 35 |
+| `.github/workflows/dependency.yml` | Dependabot PR automation | 20 |
 | `scripts/build-zip.mjs` | Creates `dist/extension.zip` | 55 |
+| `scripts/validate-env.js` | Env validation (FR-POL-015) | 20 |
 | `public/icons/icon16.png`, `icon48.png`, `icon128.png` | Placeholder icons | (binary) |
 | `README.md` | Updated with dev commands | 40 |
+| `CHANGELOG.md` | Initial changelog (auto-generated by standard-version) | 20 |
 
 ### Acceptance Criteria
 - AC-CC-01..06, AC-RC-06
@@ -417,9 +329,6 @@ jobs:
       - run: npm run zip
       - uses: actions/upload-artifact@v4
         with: { name: extension-zip, path: dist/extension.zip }
-
-  # Optional: Lighthouse CI for panel cold mount
-  # Optional: Native host binary test on macOS/Windows runners
 ```
 
 ### Validation (Post-Merge)
@@ -450,7 +359,6 @@ The following coverage thresholds MUST be met for all PRs (matching `vitest.conf
 | functions | 80% |
 | branches | 70% |
 | statements | 80% |
-| statements | 80% |
 
 These thresholds are enforced by `npm run test:coverage` and the CI pipeline.
 
@@ -461,20 +369,24 @@ These thresholds are enforced by `npm run test:coverage` and the CI pipeline.
 ```mermaid
 graph TD
     PR1[PR #1: Config + Shared] --> PR2[PR #2: Manifest + BG]
-    PR1 --> PR3[PR #3: DevTools Panel]
-    PR2 --> PR4[PR #4: Content + Native Host]
+    PR1 --> PR3[PR #3: Native Host]
+    PR2 --> PR4[PR #4: DevTools Panel]
     PR3 --> PR4
-    PR1 --> PR5[PR #5: Cross-cutting + CI]
+    PR1 --> PR5[PR #5: Content Inspector]
     PR2 --> PR5
-    PR3 --> PR5
     PR4 --> PR5
+    PR1 --> PR6[PR #6: Cross-cutting + CI]
+    PR2 --> PR6
+    PR3 --> PR6
+    PR4 --> PR6
+    PR5 --> PR6
 ```
 
 ### Sequential Merge Rules
 1. Each PR merged to `main` only after CI passes
 2. Next PR rebased on `main` before review
 3. No parallel merges (stacked-to-main)
-4. Tag `v0.1.0-scaffold` after PR #5 merged
+4. Tag `v0.1.0-scaffold` after PR #6 merged
 
 ---
 
@@ -492,28 +404,26 @@ If any PR breaks `main`:
 
 ### FR-POL-001 to FR-POL-021 Compliance
 
-Each PR MUST validate against project policies before merge:
-
 | Policy | Validation Point | PR |
 |--------|------------------|----|
 | FR-POL-001: Git Flow Branching | Branch naming + no direct push to main/develop | All |
 | FR-POL-002: Conventional Commits | `commitlint --strict` on PR commits | All |
 | FR-POL-003: PR Required | PR to develop/main required | All |
-| FR-POL-004: Workflow Files | `.github/workflows/*.yml` exist | PR #1, #5 |
+| FR-POL-004: Workflow Files | `.github/workflows/*.yml` exist | PR #1, #6 |
 | FR-POL-005: Branch Protection | Configured via GitHub API | Post-merge |
 | FR-POL-006: CodeRabbit | PR review automation | All |
-| FR-POL-007: Dependabot | Weekly config present | PR #5 |
-| FR-POL-008: SemVer Tagging | Tag format `vX.Y.Z` | PR #5 (release) |
-| FR-POL-009: Changelog | `standard-version` output | PR #5 |
-| FR-POL-010: GitHub Release | Artifacts uploaded | PR #5 |
+| FR-POL-007: Dependabot | Weekly config present | PR #6 |
+| FR-POL-008: SemVer Tagging | Tag format `vX.Y.Z` | PR #6 (release) |
+| FR-POL-009: Changelog | `standard-version` output | PR #6 |
+| FR-POL-010: GitHub Release | Artifacts uploaded | PR #6 |
 | FR-POL-011: Env Strategy | `.env.example` exists | PR #1 |
 | FR-POL-012: Chrome MV3 Security | Manifest perms minimal | PR #2 |
-| FR-POL-013: Native Host Security | Native host only accesses secrets | PR #4 |
-| FR-POL-014: GH Actions Secrets | Release workflow uses secrets | PR #5 |
-| FR-POL-015: Env Validation | `validate:env` script runs | PR #5 |
+| FR-POL-013: Native Host Security | Native host only accesses secrets | PR #3 |
+| FR-POL-014: GH Actions Secrets | Release workflow uses secrets | PR #6 |
+| FR-POL-015: Env Validation | `validate:env` script runs | PR #6 |
 | FR-POL-016: Chrome Permissions | Minimal perms in manifest | PR #2 |
 | FR-POL-017: README Updates | README.md updated per PR | All |
-| FR-POL-018: ADR | New deps/patterns documented | PR #1, #2, #4 |
+| FR-POL-018: ADR | New deps/patterns documented | PR #1, #2, #3 |
 | FR-POL-019: Quality Gates | All CI gates pass | All |
 | FR-POL-020: Agent Self-Eval | PR template filled | All |
 | FR-POL-021: SDD Artifact Validation | Filesystem check | Each phase |
@@ -532,132 +442,6 @@ Each PR MUST validate against project policies before merge:
 | Dependency audit | `npm audit --audit-level=high` | 0 high/critical |
 | Automated code review | CodeRabbit | No blocking findings |
 | Security validation | `npm audit` + manual | 0 critical |
-
----
-
-## Quality Gates Summary (Coverage Thresholds)
-
-The following coverage thresholds MUST be met for all PRs (matching `vitest.config.ts` in 01-root-config.md):
-
-| Metric | Threshold |
-|--------|-----------|
-| lines | 80% |
-| functions | 80% |
-| branches | 70% |
-| statements | 80% |
-| statements | 80% |
-
-These thresholds are enforced by `npm run test:coverage` and the CI pipeline.
-
----
-
-## CI/CD Pipeline Integration
-
-### PR #1: Adds `ci.yml` + `lint.yml` + `typecheck.yml` + `test.yml`
-```yaml
-# .github/workflows/ci.yml (simplified)
-name: CI
-on: [push, pull_request]
-jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
-      - run: npm ci
-      - run: npm run lint
-
-  typecheck:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
-      - run: npm ci
-      - run: npm run typecheck
-
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
-      - run: npm ci
-      - run: npm run test
-
-  build:
-    needs: [lint, typecheck, test]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
-      - run: npm ci
-      - run: npm run build
-      - run: npm run zip
-      - uses: actions/upload-artifact@v4
-        with: { name: extension-zip, path: dist/extension.zip }
-```
-
-### PR #5: Adds `release.yml` + `dependency.yml` + `build.yml`
-```yaml
-# .github/workflows/release.yml
-name: Release
-on:
-  workflow_dispatch:
-    inputs:
-      version:
-        type: choice
-        options: [patch, minor, major]
-      dry-run:
-        type: boolean
-        default: true
-jobs:
-  release:
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
-      - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
-      - run: npm ci
-      - run: npm run validate:env
-      - run: npm run build && npm run zip
-      - uses: release-it/gh-actions@v1
-        with:
-          release-it: |
-            standard-version --release-as ${{ inputs.version }} --dry-run=${{ inputs.dry-run }}
-      - uses: actions/upload-artifact@v4
-        with:
-          name: release-artifacts
-          path: dist/
-```
-
-### Native Host Cross-Compilation (PR #5)
-
-```yaml
-# .github/workflows/build-native.yml
-name: Build Native Host
-on: [push, pull_request]
-jobs:
-  build-native:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
-      - run: npm ci
-      - run: npm run build:host
-      - uses: actions/upload-artifact@v4
-        with:
-          name: native-host-${{ matrix.os }}
-          path: dist/native-host/
-```
 
 ---
 
@@ -681,13 +465,21 @@ jobs:
 **DoD Gate**: [ ] Spec compliance ✅ + code quality (lint/typecheck/format) + tests pass + coverage ≥ targets (lines 80%, functions 80%, branches 70%, statements 80%) + build + arch validation + security audit + docs updated + agent self-eval + human approval
 - [ ] `src/manifest.ts` → `manifest.json` (minimal perms FR-POL-016)
 - [ ] `src/background/service-worker.ts` + router, native host client
-- [ ] `src/background/NativeHostClient.ts` (port interface)
-- [ ] `src/background/ChromeStorageAdapter.ts`
+- [ ] `src/background/NativeHostClient.ts` (implements canonical NativeHostPort)
+- [ ] `src/background/ChromeStorageAdapter.ts` (implements canonical StoragePort)
 - [ ] `src/background/alarms.ts`
 - [ ] `src/native-host/manifest.json`
 - [ ] ADR for security model (FR-POL-018)
 
-### PR #3: DevTools Panel (Preact)
+### PR #3: Native Host
+**DoR Gate**: [ ] Spec exists + ACs clear + traceability + deps resolved + env ready + test skeletons + mocks ready + ADR if needed + estimation
+**DoD Gate**: [ ] Spec compliance ✅ + code quality (lint/typecheck/format) + tests pass + coverage ≥ targets (lines 80%, functions 80%, branches 70%, statements 80%) + build + arch validation + security audit + docs updated + agent self-eval + human approval
+- [ ] `src/native-host/main.ts` + `CommandBus`, `NubeCliExecutor`, `StdioTransport`, `FileStorageAdapter`
+- [ ] `src/native-host/package.json`
+- [ ] Native host security (FR-POL-013)
+- [ ] ADR for native host path discovery (FR-POL-018)
+
+### PR #4: DevTools Panel (Preact)
 **DoR Gate**: [ ] Spec exists + ACs clear + traceability + deps resolved + env ready + test skeletons + mocks ready + ADR if needed + estimation
 **DoD Gate**: [ ] Spec compliance ✅ + code quality (lint/typecheck/format) + tests pass + coverage ≥ targets (lines 80%, functions 80%, branches 70%, statements 80%) + build + arch validation + security audit + docs updated + agent self-eval + human approval
 - [ ] `src/devtools/devtools.html` + `devtools.ts`
@@ -697,25 +489,25 @@ jobs:
 - [ ] `styles.css` + CSS Modules (CSP compliant)
 - [ ] CSP: no inline styles in production
 
-### PR #4: Content Inspector + Native Host
+### PR #5: Content Inspector
 **DoR Gate**: [ ] Spec exists + ACs clear + traceability + deps resolved + env ready + test skeletons + mocks ready + ADR if needed + estimation
 **DoD Gate**: [ ] Spec compliance ✅ + code quality (lint/typecheck/format) + tests pass + coverage ≥ targets (lines 80%, functions 80%, branches 70%, statements 80%) + build + arch validation + security audit + docs updated + agent self-eval + human approval
-- [ ] `src/content/inspector.ts` + `LiquidFileDetector`, `BadgeManager`, `Throttle`
+- [ ] `src/content/inspector.ts` + `InspectorController`, `LiquidFileDetector`, `BadgeManager`, `Throttle`
 - [ ] `src/native-host/main.ts` + `CommandDispatcher`, `NubeCliExecutor`, `StdioTransport`, `FileStorageAdapter`
 - [ ] `src/native-host/package.json`
 - [ ] Native host security (FR-POL-013)
 - [ ] ADR for native host path discovery (FR-POL-018)
 
-### PR #5: Cross-Cutting + CI/CD + Zip + Icons + README
+### PR #6: Cross-Cutting + CI/CD + Zip + Icons + README
 **DoR Gate**: [ ] Spec exists + ACs clear + traceability + deps resolved + env ready + test skeletons + mocks ready + ADR if needed + estimation
 **DoD Gate**: [ ] Spec compliance ✅ + code quality (lint/typecheck/format) + tests pass + coverage ≥ targets (lines 80%, functions 80%, branches 70%, statements 80%) + build + arch validation + security audit + docs updated + agent self-eval + human approval
-- [ ] `src/shared/storage.ts` (Result-based chrome.storage wrapper)
-- [ ] Logger transports: `ConsoleLogger` (bg/panel/content), `FileLogger` (native)
+- [ ] `src/shared/storage.ts` (Result-based chrome.storage wrapper, implements StoragePort)
+- [ ] Logger transports: `ConsoleLogger` (bg/panel/content), `FileLogger` (native) — **in `src/shared/logger.ts`**
 - [ ] CI: `build.yml` + `release.yml` + `dependency.yml` + `build-native.yml`
 - [ ] `scripts/build-zip.mjs` → `dist/extension.zip`
 - [ ] `public/icons/icon16.png`, `icon48.png`, `icon128.png`
 - [ ] `README.md` updated (FR-POL-017)
-- [ ] `scripts/validate-env.ts` (FR-POL-015)
+- [ ] `scripts/validate-env.js` (FR-POL-015)
 - [ ] GitHub Release workflow with artifacts (FR-POL-010)
 - [ ] Dependabot config (FR-POL-007)
 - [ ] Tag `v0.1.0-scaffold` after merge
