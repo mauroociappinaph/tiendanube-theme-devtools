@@ -23,12 +23,12 @@ PR #1 (foundation) → PR #2a (shared-types) → PR #2b (shared-logic) → PR #3
 
 | ID | Title | PR | Est. Lines | Dependencies |
 |----|-------|----|-----------|--------------|
-| T-001 | Root package.json with scripts & deps | PR #1 | 55 | — |
-| T-002 | TypeScript configs (3 files) | PR #1 | 80 | — |
-| T-003 | esbuild multi-entry config | PR #1 | 85 | T-001, T-002 |
-| T-004 | ESLint + Prettier configs | PR #1 | 60 | — |
-| T-005 | Vitest configs + setup + mocks | PR #1 | 125 | T-002 |
-| T-006 | Dependabot + .env.example | PR #1 | 25 | — |
+| T-001 | ✅ Root package.json with scripts & deps | PR #1 | 55 | — |
+| T-002 | ✅ TypeScript configs (3 files) | PR #1 | 80 | — |
+| T-003 | ✅ esbuild multi-entry config | PR #1 | 85 | T-001, T-002 |
+| T-004 | ✅ ESLint + Prettier configs | PR #1 | 60 | — |
+| T-005 | ✅ Vitest configs + setup + mocks | PR #1 | 125 | T-002 |
+| T-006 | ✅ Dependabot + .env.example | PR #1 | 25 | — |
 | T-007 | Result pattern (result.ts) | PR #2a | 35 | — |
 | T-008 | Domain errors (errors.ts) | PR #2a | 45 | — |
 | T-009 | Messaging types (messaging.ts) | PR #2a | 60 | T-007, T-008 |

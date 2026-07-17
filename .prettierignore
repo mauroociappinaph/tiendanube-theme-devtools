@@ -1,0 +1,9 @@
+dist/
+node_modules/
+*.png
+*.jpg
+*.svg
+*.ico
+CHANGELOG.md
+coverage/
+.temp-*
