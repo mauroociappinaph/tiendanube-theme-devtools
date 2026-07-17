@@ -34,6 +34,8 @@ Define the typed Manifest V3 definition for the Tienda Nube Theme DevTools exten
 - THEN `manifest.json`'s `version` field MUST equal `package.json`'s `version`
 - AND updating `package.json`'s version MUST automatically update the manifest
 
+---
+
 ### FR-MAN-002: Required Manifest Fields
 
 The generated `manifest.json` MUST contain:
@@ -50,6 +52,7 @@ The generated `manifest.json` MUST contain:
 | `host_permissions` | `["https://*.tiendanube.com/*", "https://*.nuvemshop.com.br/*"]` | Tiendanube domains |
 | `content_scripts` | One entry for `src/content/inspector.ts` | Inspection mode |
 | `icons` | `{ "16": ..., "48": ..., "128": ... }` | Extension icons |
+| `content_security_policy` | See FR-MAN-008 | CSP for DevTools panel |
 
 #### Scenario: Required fields present
 
@@ -65,6 +68,8 @@ The generated `manifest.json` MUST contain:
 - THEN the type system MUST allow it (valid MV3 permission)
 - WHEN Chrome loads the extension
 - THEN the permission MUST appear in `chrome://extensions` details
+
+---
 
 ### FR-MAN-003: Background Service Worker Config
 
@@ -93,6 +98,8 @@ The `background` field MUST specify:
 - THEN `chrome://extensions` MUST show a warning: "Service worker registration failed"
 - AND the extension MUST be disabled until the file is restored
 
+---
+
 ### FR-MAN-004: DevTools Page
 
 The `devtools_page` field MUST point to `"devtools/devtools.html"`.
@@ -103,6 +110,8 @@ The `devtools_page` field MUST point to `"devtools/devtools.html"`.
 - WHEN the user opens DevTools
 - THEN a panel tab titled "🛠 Tienda Nube" MUST appear
 - AND clicking the tab MUST load the page at `devtools/devtools.html`
+
+---
 
 ### FR-MAN-005: Content Script Configuration
 
@@ -129,6 +138,8 @@ The content script entry MUST specify:
 - THEN `content/inspector.js` MUST NOT be injected
 - AND `window.__TIENDANUBE_DEVTOOLS__` MUST be `undefined`
 
+---
+
 ### FR-MAN-006: Permissions Declaration
 
 The extension MUST declare the minimum viable set of permissions:
@@ -150,6 +161,8 @@ permissions: [
 - THEN `chrome://extensions` MUST show "Read your browsing history" warning
 - AND the user MUST accept before the extension activates
 
+---
+
 ### FR-MAN-007: Host Permissions
 
 ```typescript
@@ -164,6 +177,35 @@ host_permissions: [
 - GIVEN a new store domain is added to `host_permissions`
 - WHEN the extension is rebuilt and reloaded
 - THEN Chrome MUST request new host permission approval from the user
+
+---
+
+### FR-MAN-008: Content Security Policy (CSP)
+
+The manifest MUST declare a strict CSP for extension pages (especially the DevTools panel):
+
+```typescript
+content_security_policy: {
+  extension_pages: "script-src 'self'; object-src 'self'; style-src 'self';"
+},
+```
+
+**Rationale**: The DevTools panel (`devtools.html` / `Panel.tsx`) uses Preact with external CSS files (CSS Modules). Inline styles and scripts are forbidden. The CSP must restrict:
+- `script-src 'self'` — only local scripts (no eval, no inline)
+- `object-src 'self'` — no plugins
+- `style-src 'self'` — only local stylesheets (no inline styles, no unsafe-inline)
+
+**Forbidden** (will cause CSP violations in production):
+- Inline `<style>` tags
+- `style` attributes on elements (Preact JSX `style={{...}}` compiles to inline styles in dev, MUST be avoided)
+- Dynamic `<link>` insertion from JavaScript at runtime
+
+**Required**:
+- CSS Modules (`*.module.css`) imported in components → extracted to `dist/devtools/panel/*.css` by esbuild
+- `<link rel="stylesheet" href="panel/Component.module.css">` in `devtools.html`
+- Production build uses `preact/compat` with CSS extraction (esbuild `cssModules: true`)
+
+**Traceability**: Project policy — Chrome MV3 Security (FR-POL-012), Quality Gates (FR-POL-019), DevTools Panel Spec (NFR-DTP-003).
 
 ---
 
@@ -212,6 +254,9 @@ interface ChromeExtensionManifest {
     48: string;
     128: string;
   };
+  content_security_policy: {
+    extension_pages: string;
+  };
   key?: string;          // Only in development builds
   minimum_chrome_version?: string;  // Optional
 }
@@ -246,6 +291,7 @@ function defineManifest(
 | T-MAN-005 | Integration | Generated `manifest.json` passes Chrome schema validation |
 | T-MAN-006 | Integration | Invalid permission causes type error |
 | T-MAN-007 | E2E | Extension loads in Chrome with correct manifest details |
+| T-MAN-008 | Unit | CSP field matches strict policy from FR-MAN-008 |
 
 ---
 
@@ -258,6 +304,7 @@ function defineManifest(
 | Missing `name` | Empty string in manifest | Chrome shows "Extension" as name |
 | Permission prompt rejected | User declines host_permissions | Content script doesn't inject |
 | `service_worker` path wrong | Typo in filename | Chrome shows SW registration error |
+| CSP violation | Inline style/script in panel | Chrome blocks panel, console error |
 
 ---
 
@@ -272,5 +319,10 @@ function defineManifest(
 | FR-MAN-005 | Content Script Pattern | Content injection |
 | FR-MAN-006 | Security — Least Privilege | Permissions declaration |
 | FR-MAN-007 | Security — Host Control | Host permissions scoping |
+| **FR-MAN-008** | **CSP Compliance** | **`src/manifest.ts` (CSP field)** |
 | NFR-MAN-001 | Deterministic Builds | Manifest generation plugin |
 | NFR-MAN-002 | CI/CD Readiness | Build reproducibility |
+
+---
+
+*End of Manifest Spec*
