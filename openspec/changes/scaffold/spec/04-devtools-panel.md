@@ -404,7 +404,7 @@ export function usePanelStore() {
 
 ### NFR-DTP-001: Panel Load Time
 
-The panel MUST be interactive (Preact root mounted, event listeners active) within 1 second of clicking the tab.
+The panel MUST be interactive (Preact root mounted, event listeners active) within **200ms** of clicking the tab.
 
 ### NFR-DTP-002: Panel Size
 

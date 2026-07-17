@@ -39,7 +39,7 @@ Bootstrap the entire Chrome Extension project from zero to functional developmen
   - `src/shared/utils.ts` — Common utilities
   - `src/types/global.d.ts` — Global type declarations
 - Developer tooling:
-  - `.eslintrc.cjs` — ESLint config (TypeScript + Preact)
+  - `eslint.config.mjs` — ESLint config (flat config, TypeScript + Preact)
   - `.prettierrc` / `.prettierignore` — Prettier config
   - `vitest.config.ts` — Vitest configuration
 - CI/CD:
@@ -72,7 +72,7 @@ tiendanube-theme-devtools/
 ├── tsconfig.native-host.json     # Native host TS config
 ├── esbuild.config.mjs            # Single esbuild config
 ├── vitest.config.ts              # Test config
-├── .eslintrc.cjs                 # Linter
+├── eslint.config.mjs                 # Linter
 ├── .prettierrc / .prettierignore # Formatter
 ├── public/
 │   └── icons/                    # Extension icons (16, 48, 128)

@@ -451,7 +451,7 @@ The utilities module MUST provide pure, tree-shakeable utility functions.
 
 ---
 
-### FR-SH-006: Global Type Declarations (`src/shared/global.d.ts`)
+### FR-SH-006: Global Type Declarations (`src/types/global.d.ts`)
 
 The global declarations file MUST define ambient types that are used across the entire project without explicit imports.
 
@@ -769,7 +769,7 @@ import { createContainer, createToken } from '@/shared/di';
 | `src/shared/storage.ts` | Re-exported | Storage wrappers used by background + DevTools |
 | `src/shared/utils.ts` | Re-exported | Pure functions used by all adapters |
 | `src/shared/types/chrome.d.ts` | Type-level only | Chrome API augmentations |
-| `src/shared/global.d.ts` | Type-level only | Global ambient declarations |
+| `src/types/global.d.ts` | Type-level only | Global ambient declarations |
 | `src/shared/logger.ts` | Re-exported | Logger interface + transports |
 | `src/shared/config.ts` | Re-exported | Config loading + validation |
 | `src/shared/messageRegistry.ts` | Re-exported | Central message handler registry |

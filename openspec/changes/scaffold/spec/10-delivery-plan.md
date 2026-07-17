@@ -50,7 +50,7 @@ The `scaffold` change delivers ~2,130 lines across ~59 files. Per SDD review bud
 | shared/storage.ts + tests | Not Started | @backend-lead | 80/80/70/80 | ☐ | ☐ |
 | shared/utils.ts + tests | Not Started | @backend-lead | 80/80/70/80 | ☐ | ☐ |
 | shared/types/chrome.d.ts | Not Started | @backend-lead | N/A | ☐ | ☐ |
-| shared/global.d.ts | Not Started | @backend-lead | N/A | ☐ | ☐ |
+| `src/types/global.d.ts` | Not Started | @backend-lead | N/A | ☐ | ☐ |
 | vitest.setup.ts (chrome mocks) | Not Started | @backend-lead | N/A | ☐ | ☐ |
 | .github/workflows/ci.yml | Not Started | @devops-lead | N/A | ☐ | ☐ |
 | .github/dependabot.yml | Not Started | @devops-lead | N/A | ☐ | ☐ |
@@ -85,7 +85,7 @@ Establish tooling, build pipeline, and shared domain layer. After merge: `npm in
 | `vitest.native-host.config.ts` | Native host test config (Node) | 25 |
 | `vitest.setup.ts` | Chrome API mocks (storage, runtime, devtools) | 45 |
 | `vitest.native-host.setup.ts` | Native host test setup (Node) | 15 |
-| `.eslintrc.cjs` | ESLint + TypeScript + Preact | 45 |
+| `eslint.config.mjs` | ESLint + TypeScript + Preact | 45 |
 | `.prettierrc` / `.prettierignore` | Formatting | 15 |
 | `src/shared/result.ts` | Result/Either pattern | 45 |
 | `src/shared/errors.ts` | DomainError discriminated union | 50 |
@@ -271,7 +271,6 @@ Wire cross-cutting concerns (Result pattern enforcement, DI wiring, logging tran
 ### Files Created
 | Path | Purpose | Est. Lines |
 |------|---------|------------|
-| `src/shared/storage.ts` | Chrome storage wrapper (Result-based, implements StoragePort) | 45 |
 | `.github/workflows/ci.yml` | Full CI: lint, typecheck, test, build, zip | 80 |
 | `.github/workflows/build-native.yml` | Native host cross-compilation (Linux/macOS/Windows) | 30 |
 | `.github/workflows/release.yml` | Release automation | 35 |
@@ -453,11 +452,11 @@ If any PR breaks `main`:
 - [ ] `package.json` with all scripts, deps, workspaces
 - [ ] `tsconfig.json` + project references (3 layers)
 - [ ] `esbuild.config.mjs` with 4 entry points
-- [ ] `.eslintrc.cjs` + `.prettierrc` + `vitest.config.ts`
+- [ ] `eslint.config.mjs` + `.prettierrc` + `vitest.config.ts`
 - [ ] `src/shared/` — result, errors, messaging, di, logger, ports, types, utils
 - [ ] `.env.example` (FR-POL-011)
 - [ ] ADR for build tool choice (FR-POL-018)
-- [ ] CI: `lint.yml`, `typecheck.yml`, `test.yml` (FR-POL-004)
+- [ ] CI: `ci.yml` (FR-POL-004)
 - [ ] Quality gates pass (FR-POL-019)
 
 ### PR #2: Manifest + Background SW

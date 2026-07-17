@@ -28,7 +28,7 @@ The entire project root — every file created is additive.
 | `src/shared/` | Types, messaging protocol, storage wrappers, utils |
 | `public/icons/` | Extension icons (16/48/128) |
 | `scripts/build-zip.mjs` | Build script for Chrome Web Store submission |
-| `.eslintrc.cjs` | ESLint configuration |
+| `eslint.config.mjs` | ESLint configuration |
 | `.prettierrc` / `.prettierignore` | Prettier configuration |
 | `.github/workflows/ci.yml` | CI pipeline |
 | `.github/dependabot.yml` | Dependency updates |

@@ -8,7 +8,7 @@
 
 ## Purpose
 
-Define the root-level project configuration files that establish the build pipeline, language settings, code quality tooling, and development scripts. This spec covers `package.json`, `tsconfig.json` (and project references), `esbuild.config.mjs`, `.eslintrc.cjs`, `.prettierrc`, `.prettierignore`, `vitest.config.ts`, and `scripts/build-zip.mjs`.
+Define the root-level project configuration files that establish the build pipeline, language settings, code quality tooling, and development scripts. This spec covers `package.json`, `tsconfig.json` (and project references), `esbuild.config.mjs`, `eslint.config.mjs`, `.prettierrc`, `.prettierignore`, `vitest.config.ts`, and `scripts/build-zip.mjs`.
 
 ---
 
@@ -262,7 +262,7 @@ interface BuildConfig {
 | `typescript` | `~5.5.0` | Type checking | dev |
 | `esbuild` | `^0.24.0` | Bundler | dev |
 | `preact` | `^10.25.0` | UI framework | dependency |
-| `@types/chrome` | latest | Chrome API types | dev |
+| `@types/chrome` | `^0.0.258` | Chrome API types | dev |
 | `vitest` | `^2.0.0` | Test runner | dev |
 | `eslint` | `^9.0.0` | Linter | dev |
 | `@typescript-eslint/*` | latest | TS lint rules | dev |
@@ -271,7 +271,7 @@ interface BuildConfig {
 | `jsdom` | `^24.0.0` | DOM env for tests | dev |
 | `madge` | `^7.0.0` | Circular dep detection | dev |
 
-**Dependency direction**: Root `package.json` is the single source. Native host has its own `package.json` with only Node.js built-in deps.
+**Dependency direction**: Root `package.json` is the single source. Native host has its own `package.json` with minimal deps (zod only).
 
 ---
 
@@ -567,7 +567,7 @@ export default defineConfig({
 | `zod` | `^3.23.0` | Schema validation | dependency |
 | `dotenv` | `^16.4.0` | Env loading (native host) | dependency |
 
-**Dependency direction**: Root `package.json` is the single source. Native host has its own `package.json` with only Node.js built-in deps.
+**Dependency direction**: Root `package.json` is the single source. Native host has its own `package.json` with minimal deps (zod only).
 
 ---
 

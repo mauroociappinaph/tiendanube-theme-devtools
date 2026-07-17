@@ -217,7 +217,7 @@ The build pipeline MUST run `tsc --noEmit` to verify types. esbuild strips types
 
 ### FR-ARCH-010: File Size Budget
 
-No source file SHALL exceed 300 lines. The `esbuild.config.mjs` SHALL NOT exceed 150 lines. Config files (`tsconfig.json`, `.eslintrc.cjs`) SHALL be exempt from this budget but SHOULD stay concise.
+No source file SHALL exceed 300 lines. The `esbuild.config.mjs` SHALL NOT exceed 150 lines. Config files (`tsconfig.json`, `eslint.config.mjs`) SHALL be exempt from this budget but SHOULD stay concise.
 
 **Traceability**: File size < 300 lines, no God Objects.
 
@@ -888,7 +888,7 @@ Root config files:
 ├── esbuild.config.mjs
 ├── vitest.config.ts
 ├── vitest.native-host.config.ts
-├── .eslintrc.cjs
+├── eslint.config.mjs
 ├── .prettierrc
 ├── .prettierignore
 ├── scripts/
