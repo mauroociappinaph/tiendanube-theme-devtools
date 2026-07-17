@@ -477,6 +477,8 @@ type StatusBarState =
   | { type: 'error'; message: string };
 
 // Return type of useChromeRuntime hook
+// Uses ExtensionMessage from src/shared/messaging.ts (defined in 07-shared-core.md)
+// Import with: import type { ExtensionMessage } from '@/shared/messaging';
 interface ChromeRuntimeHook {
   connected: boolean;
   nativeHostStatus: NativeHostStatus;

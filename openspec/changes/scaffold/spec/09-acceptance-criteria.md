@@ -177,4 +177,19 @@ The `scaffold` change is **complete** when:
 
 ---
 
+### Coverage Requirements
+
+The following coverage thresholds MUST be met (matching `vitest.config.ts` in 01-root-config.md):
+
+| Metric | Threshold |
+|--------|-----------|
+| lines | 80% |
+| functions | 80% |
+| branches | 70% |
+| statements | 80% |
+
+These thresholds are enforced by `npm run test:coverage` and the CI pipeline.
+
+---
+
 *End of Acceptance Criteria Matrix*

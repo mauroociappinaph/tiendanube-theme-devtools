@@ -21,7 +21,7 @@ cd tiendanube-theme-devtools
 npm install && npm run build
 
 # 3. Load in Chrome
-# chrome://extensions → Developer mode → "Load unpacked" → select ./extension/dist
+# chrome://extensions → Developer mode → "Load unpacked" → select ./dist
 
 # 4. Install Native Host (one-time)
 npm run install:host
@@ -37,10 +37,37 @@ npm run install:host
 ## Architecture
 
 ```
-extension/       # Manifest V3 DevTools extension (panel, background, content)
-native-host/     # Node.js binary (pkg/sea) — runs nube-cli commands
-shared/          # TypeScript types shared between both
+src/
+├── manifest.ts
+├── background/
+│   └── service-worker.ts
+├── devtools/
+│   ├── devtools.html
+│   ├── devtools.ts
+│   └── panel/
+│       ├── Panel.tsx
+│       ├── components/
+│       ├── hooks/
+│       └── styles.css
+├── content/
+│   └── inspector.ts
+├── native-host/
+│   ├── main.ts
+│   ├── manifest.json
+│   └── package.json
+└── shared/
+    ├── messaging.ts
+    ├── storage.ts
+    ├── types/
+    └── utils.ts
 ```
+
+The extension follows Hexagonal Architecture:
+- **shared/** — Domain layer (pure TypeScript, zero runtime deps)
+- **background/** — Adapter: Chrome Service Worker (message routing, alarms, native host bridge)
+- **devtools/** — Adapter: DevTools Panel (Preact UI with Signals)
+- **content/** — Adapter: Content Script (page detection, hover inspection, badge injection)
+- **native-host/** — Adapter: Node.js Native Messaging Host (executes nube-cli)
 
 ## Branches
 

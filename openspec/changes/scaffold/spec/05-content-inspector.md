@@ -474,14 +474,16 @@ export interface HoverEventPayload {
   boundingRect: { top: number; left: number; width: number; height: number };
 }
 
-// Content script messages (discriminated union)
-export type ContentMessage =
-  | { type: 'PAGE_DETECTED'; payload: PageDetectionResult; correlationId: string; timestamp: number }
-  | { type: 'HOVER_EVENT'; payload: HoverEventPayload; correlationId: string; timestamp: number }
-  | { type: 'ACTIVATE_INSPECT'; correlationId: string; timestamp: number }
-  | { type: 'DEACTIVATE_INSPECT'; correlationId: string; timestamp: number }
-  | { type: 'INSPECT_MODE_CHANGED'; payload: { active: boolean }; correlationId: string; timestamp: number }
-  | { type: 'CLEANUP_BADGES'; correlationId: string; timestamp: number };
+// Content script messages use shared types from src/shared/messaging.ts
+// Import with:
+// import type { ExtensionMessage, PageDetectionResult, HoverEventPayload } from '@/shared/messaging';
+//
+// The relevant message types for content script are:
+// - ExtensionMessage (discriminated union from shared/messaging.ts)
+// - PageDetectionResult
+// - HoverEventPayload
+//
+// This spec uses shared message types — NO local ContentMessage definition.
 ```
 
 ---

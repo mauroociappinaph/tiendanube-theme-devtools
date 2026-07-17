@@ -194,6 +194,9 @@ The service worker MUST use `chrome.alarms` for periodic tasks.
 
 ### FR-BG-006: Message Routing Table
 
+**Uses message types from `src/shared/messaging.ts` (defined in 07-shared-core.md).**
+Import with: `import type { ExtensionMessage } from '@/shared/messaging';`
+
 | Message Type | Route | Handler |
 |--------------|-------|---------|
 | `PAGE_DETECTED` | Content → Background | Log + store page type |

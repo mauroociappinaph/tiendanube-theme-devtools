@@ -32,21 +32,21 @@ The `scaffold` change delivers ~1,500 lines across ~50 files. Per SDD review bud
 
 ### Sub-tasks PR #1 (granular tracking)
 
-| Task | Status | Owner | Coverage | DoR | DoD |
-|------|--------|-------|----------|-----|-----|
-| package.json + scripts | Not Started | @backend-lead | 80/80/70 | ☐ | ☐ |
-| tsconfig (project refs) | Not Started | @backend-lead | 80/80/70 | ☐ | ☐ |
-| esbuild.config.mjs | Not Started | @backend-lead | 80/80/70 | ☐ | ☐ |
-| vitest.config.ts + setup | Not Started | @backend-lead | 80/80/70 | ☐ | ☐ |
-| eslint + prettier | Not Started | @backend-lead | 80/80/70 | ☐ | ☐ |
-| shared/result.ts + tests | Not Started | @backend-lead | 80/80/70 | ☐ | ☐ |
-| shared/errors.ts + tests | Not Started | @backend-lead | 80/80/70 | ☐ | ☐ |
-| shared/messaging.ts + tests | Not Started | @backend-lead | 80/80/70 | ☐ | ☐ |
-| shared/di.ts + tests | Not Started | @backend-lead | 80/80/70 | ☐ | ☐ |
-| shared/logger.ts + tests | Not Started | @backend-lead | 80/80/70 | ☐ | ☐ |
-| shared/ports/* + tests | Not Started | @backend-lead | 80/80/70 | ☐ | ☐ |
-| shared/storage.ts + tests | Not Started | @backend-lead | 80/80/70 | ☐ | ☐ |
-| shared/utils.ts + tests | Not Started | @backend-lead | 80/80/70 | ☐ | ☐ |
+| Task | Status | Owner | Coverage | DoR ✅ | DoD ✅ |
+|------|--------|-------|----------|--------|--------|
+| package.json + scripts | Not Started | @backend-lead | 80/80/70/80 | ☐ | ☐ |
+| tsconfig (project refs) | Not Started | @backend-lead | 80/80/70/80 | ☐ | ☐ |
+| esbuild.config.mjs | Not Started | @backend-lead | 80/80/70/80 | ☐ | ☐ |
+| vitest.config.ts + setup | Not Started | @backend-lead | 80/80/70/80 | ☐ | ☐ |
+| eslint + prettier | Not Started | @backend-lead | 80/80/70/80 | ☐ | ☐ |
+| shared/result.ts + tests | Not Started | @backend-lead | 80/80/70/80 | ☐ | ☐ |
+| shared/errors.ts + tests | Not Started | @backend-lead | 80/80/70/80 | ☐ | ☐ |
+| shared/messaging.ts + tests | Not Started | @backend-lead | 80/80/70/80 | ☐ | ☐ |
+| shared/di.ts + tests | Not Started | @backend-lead | 80/80/70/80 | ☐ | ☐ |
+| shared/logger.ts + tests | Not Started | @backend-lead | 80/80/70/80 | ☐ | ☐ |
+| shared/ports/* + tests | Not Started | @backend-lead | 80/80/70/80 | ☐ | ☐ |
+| shared/storage.ts + tests | Not Started | @backend-lead | 80/80/70/80 | ☐ | ☐ |
+| shared/utils.ts + tests | Not Started | @backend-lead | 80/80/70/80 | ☐ | ☐ |
 | shared/types/chrome.d.ts | Not Started | @backend-lead | N/A | ☐ | ☐ |
 | shared/global.d.ts | Not Started | @backend-lead | N/A | ☐ | ☐ |
 | vitest.setup.ts (chrome mocks) | Not Started | @backend-lead | N/A | ☐ | ☐ |
@@ -453,6 +453,21 @@ npm ci && npm run build && npm run zip
 
 ---
 
+## Quality Gates Summary
+
+The following coverage thresholds MUST be met for all PRs (matching `vitest.config.ts` in 01-root-config.md):
+
+| Metric | Threshold |
+|--------|-----------|
+| lines | 80% |
+| functions | 80% |
+| branches | 70% |
+| statements | 80% |
+
+These thresholds are enforced by `npm run test:coverage` and the CI pipeline.
+
+---
+
 ## Merge Order & Dependencies
 
 ```mermaid
@@ -529,6 +544,21 @@ Each PR MUST validate against project policies before merge:
 | Dependency audit | `npm audit --audit-level=high` | 0 high/critical |
 | Automated code review | CodeRabbit | No blocking findings |
 | Security validation | `npm audit` + manual | 0 critical |
+
+---
+
+## Quality Gates Summary (Coverage Thresholds)
+
+The following coverage thresholds MUST be met for all PRs (matching `vitest.config.ts` in 01-root-config.md):
+
+| Metric | Threshold |
+|--------|-----------|
+| lines | 80% |
+| functions | 80% |
+| branches | 70% |
+| statements | 80% |
+
+These thresholds are enforced by `npm run test:coverage` and the CI pipeline.
 
 ---
 
@@ -645,6 +675,8 @@ jobs:
 ## PR-Specific Policy Checklist
 
 ### PR #1: Root Config + Shared Core
+**DoR Gate**: [ ] Spec exists + ACs clear + traceability + deps resolved + env ready + test skeletons + mocks ready + ADR if needed + estimation
+**DoD Gate**: [ ] Spec compliance ✅ + code quality (lint/typecheck/format) + tests pass + coverage ≥ targets (lines 80%, functions 80%, branches 70%) + build + arch validation + security audit + docs updated + agent self-eval + human approval
 - [ ] `package.json` with all scripts, deps, workspaces
 - [ ] `tsconfig.json` + project references (3 layers)
 - [ ] `esbuild.config.mjs` with 4 entry points
@@ -656,6 +688,8 @@ jobs:
 - [ ] Quality gates pass (FR-POL-019)
 
 ### PR #2: Manifest + Background SW
+**DoR Gate**: [ ] Spec exists + ACs clear + traceability + deps resolved + env ready + test skeletons + mocks ready + ADR if needed + estimation
+**DoD Gate**: [ ] Spec compliance ✅ + code quality (lint/typecheck/format) + tests pass + coverage ≥ targets (lines 80%, functions 80%, branches 70%) + build + arch validation + security audit + docs updated + agent self-eval + human approval
 - [ ] `src/manifest.ts` → `manifest.json` (minimal perms FR-POL-016)
 - [ ] `src/background/service-worker.ts` + router, native host client
 - [ ] `src/background/NativeHostClient.ts` (port interface)
@@ -665,6 +699,8 @@ jobs:
 - [ ] ADR for security model (FR-POL-018)
 
 ### PR #3: DevTools Panel (Preact)
+**DoR Gate**: [ ] Spec exists + ACs clear + traceability + deps resolved + env ready + test skeletons + mocks ready + ADR if needed + estimation
+**DoD Gate**: [ ] Spec compliance ✅ + code quality (lint/typecheck/format) + tests pass + coverage ≥ targets (lines 80%, functions 80%, branches 70%) + build + arch validation + security audit + docs updated + agent self-eval + human approval
 - [ ] `src/devtools/devtools.html` + `devtools.ts`
 - [ ] `src/devtools/panel/Panel.tsx` + `App.tsx`
 - [ ] Components: `LocalRemoteToggle`, `ReloadThemeButton`, `InspectModeToggle`, `StatusBar`, `ErrorBoundary`
@@ -673,6 +709,8 @@ jobs:
 - [ ] CSP: no inline styles in production
 
 ### PR #4: Content Inspector + Native Host
+**DoR Gate**: [ ] Spec exists + ACs clear + traceability + deps resolved + env ready + test skeletons + mocks ready + ADR if needed + estimation
+**DoD Gate**: [ ] Spec compliance ✅ + code quality (lint/typecheck/format) + tests pass + coverage ≥ targets (lines 80%, functions 80%, branches 70%) + build + arch validation + security audit + docs updated + agent self-eval + human approval
 - [ ] `src/content/inspector.ts` + `LiquidFileDetector`, `BadgeManager`, `Throttle`
 - [ ] `src/native-host/main.ts` + `CommandDispatcher`, `NubeCliExecutor`, `StdioTransport`, `FileStorageAdapter`
 - [ ] `src/native-host/package.json`
@@ -680,6 +718,8 @@ jobs:
 - [ ] ADR for native host path discovery (FR-POL-018)
 
 ### PR #5: Cross-Cutting + CI/CD + Zip + Icons + README
+**DoR Gate**: [ ] Spec exists + ACs clear + traceability + deps resolved + env ready + test skeletons + mocks ready + ADR if needed + estimation
+**DoD Gate**: [ ] Spec compliance ✅ + code quality (lint/typecheck/format) + tests pass + coverage ≥ targets (lines 80%, functions 80%, branches 70%) + build + arch validation + security audit + docs updated + agent self-eval + human approval
 - [ ] `src/shared/storage.ts` (Result-based chrome.storage wrapper)
 - [ ] Logger transports: `ConsoleLogger` (bg/panel/content), `FileLogger` (native)
 - [ ] CI: `build.yml` + `release.yml` + `dependency.yml` + `build-native.yml`
