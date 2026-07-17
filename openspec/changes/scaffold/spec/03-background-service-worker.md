@@ -600,4 +600,17 @@ interface MessageRouter {
 
 ---
 
+## Files Created in Scaffold
+
+| Path | Purpose |
+|------|---------|
+| `src/background/service-worker.ts` | Entry point — router, alarms, native host bridge |
+| `src/background/MessageRouter.ts` | Routes messages between panel, content, native host |
+| `src/background/NativeHostClient.ts` | Adapter for NativeHostPort (canonical) |
+| `src/background/ChromeStorageAdapter.ts` | Adapter for StoragePort (canonical) |
+| `src/background/alarms.ts` | Theme reload check alarm |
+| `src/native-host/manifest.json` | Native messaging host manifest |
+
+---
+
 *End of Background Service Worker Spec*

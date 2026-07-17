@@ -103,11 +103,23 @@ tiendanube-theme-devtools/
 │   │   ├── manifest.json         # Native host manifest
 │   │   └── package.json          # Native host deps
 │   └── shared/
-│       ├── messaging.ts          # Message passing
-│       ├── storage.ts            # Storage wrappers
-│       ├── types/
-│       │   └── chrome.d.ts       # Chrome API types
-│       └── utils.ts              # Utilities
+│       ├── result.ts                  # Result/Either pattern (Ok/Err)
+│       ├── errors.ts                  # DomainError discriminated union
+│       ├── messaging.ts               # Envelope, Request, Response types (canonical)
+│       ├── di.ts                      # Lightweight DI container
+│       ├── logger.ts                  # Logger interface + ConsoleLogger/FileLogger/MemoryLogger
+│       ├── config.ts                  # ExtensionConfig + HostConfig + loadConfig()
+│       ├── messageRegistry.ts         # Central message handler registry
+│       ├── command.ts                 # Command pattern interfaces (CQRS-lite)
+│       ├── validation.ts              # Zod schemas + validate()
+│       ├── storage.ts                 # Chrome storage wrapper (Result-based)
+│       ├── utils.ts                   # Pure utilities (debounce, uuid, etc.)
+│       ├── ports/
+│       │   ├── StoragePort.ts         # Interface for chrome.storage
+│       │   ├── MessagingPort.ts       # Interface for chrome.runtime
+│       │   └── NativeHostPort.ts      # Interface for native host
+│       └── types/
+│           └── chrome.d.ts            # Chrome API augmentations
 ├── .github/
 │   ├── workflows/
 │   │   └── ci.yml                # CI pipeline

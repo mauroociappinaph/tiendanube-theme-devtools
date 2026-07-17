@@ -23,7 +23,7 @@ src/content/
 ├── LiquidMapper.ts                 # Pure function: element → LiquidFileMapping (no DOM, no messaging)
 ├── HoverHandler.ts                 # Throttled hover (150ms), IntersectionObserver, RAF positioning
 ├── BadgeManager.ts                 # Badge injection, positioning, cleanup (interface + impl)
-├── SPANavigationHandler.ts         # MutationObserver + popstate for SPA navigation
+├── SPANavigationHandler.ts         # MutationObserver + history.pushState patching for SPA navigation
 ├── MessageHandler.ts               # Message routing: ACTIVATE/DEACTIVATE_INSPECT, PAGE_DETECTED, HOVER_EVENT
 └── Throttle.ts                     # 150ms debounce + RAF helpers
 ```
@@ -248,7 +248,7 @@ export class DOMBadgeManager implements BadgeManager {
 
 ### FR-CI-005: SPA Navigation (`SPANavigationHandler.ts`)
 
-Uses `MutationObserver` + `popstate` + monkey-patched `history.pushState`/`replaceState`:
+Uses `MutationObserver` + `history.pushState` patching + monkey-patched `history.pushState`/`replaceState`:
 
 ```typescript
 // src/content/SPANavigationHandler.ts

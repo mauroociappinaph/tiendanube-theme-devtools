@@ -226,7 +226,7 @@ ESLint and Prettier MUST NOT conflict. The ESLint config MUST use `eslint-config
 - Use `jsdom` environment for DevTools panel tests
 - Provide `chrome` global mock via `globals.setup`
 - Enable TypeScript via `vite` tsconfig
-- Set `testSetup` to a file that polyfills `chrome.*` APIs as no-ops
+- Set `setupFiles` to a file that polyfills `chrome.*` APIs as no-ops
 
 ---
 
@@ -252,26 +252,6 @@ interface BuildConfig {
   production: boolean;      // NODE_ENV === 'production'
 }
 ```
-
----
-
-## Dependencies
-
-| Dependency | Version | Purpose | Type |
-|-----------|---------|---------|------|
-| `typescript` | `~5.5.0` | Type checking | dev |
-| `esbuild` | `^0.24.0` | Bundler | dev |
-| `preact` | `^10.25.0` | UI framework | dependency |
-| `@types/chrome` | `^0.0.258` | Chrome API types | dev |
-| `vitest` | `^2.0.0` | Test runner | dev |
-| `eslint` | `^9.0.0` | Linter | dev |
-| `@typescript-eslint/*` | latest | TS lint rules | dev |
-| `eslint-config-prettier` | latest | Prettier integration | dev |
-| `prettier` | `^3.3.0` | Formatter | dev |
-| `jsdom` | `^24.0.0` | DOM env for tests | dev |
-| `madge` | `^7.0.0` | Circular dep detection | dev |
-
-**Dependency direction**: Root `package.json` is the single source. Native host has its own `package.json` with minimal deps (zod only).
 
 ---
 
@@ -322,7 +302,7 @@ process.exit(0);
 ```json
 {
   "scripts": {
-    "build:host": "node scripts/build-host.js",
+    "build:host": "node scripts/build-host.mjs",
     "build:host:linux": "npm run build:host -- --os=linux",
     "build:host:macos": "npm run build:host -- --os=macos",
     "build:host:windows": "npm run build:host -- --os=windows",
@@ -331,7 +311,7 @@ process.exit(0);
 }
 ```
 
-`scripts/build-host.js` uses esbuild targeting Node.js for the current platform (or cross-compiled via `--platform` flag).
+`scripts/build-host.mjs` uses esbuild targeting Node.js for the current platform (or cross-compiled via `--platform` flag).
 
 **Traceability**: Project policy — Native Host Security (FR-POL-013) + GitHub Releases (FR-POL-010).
 
@@ -555,7 +535,7 @@ export default defineConfig({
 | `typescript` | `~5.5.0` | Type checking | dev |
 | `esbuild` | `^0.24.0` | Bundler | dev |
 | `preact` | `^10.25.0` | UI framework | dependency |
-| `@types/chrome` | latest | Chrome API types | dev |
+| `@types/chrome` | `^0.0.258` | Chrome API types | dev |
 | `vitest` | `^2.0.0` | Test runner | dev |
 | `eslint` | `^9.0.0` | Linter | dev |
 | `@typescript-eslint/*` | latest | TS lint rules | dev |

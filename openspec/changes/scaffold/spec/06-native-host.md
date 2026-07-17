@@ -206,6 +206,9 @@ export function loadHostConfig(overrides?: Partial<HostConfig>): HostConfig {
     advanced: { ipcBufferSize: 64 * 1024, shutdownGracePeriod: 5000 },
   };
 
+  // Load .env files via dotenv (only for native host)
+  import 'dotenv/config';
+
   const merged = deepMerge(raw, overrides ?? {});
   const result = HostConfigSchema.safeParse(merged);
 
@@ -526,7 +529,13 @@ export class NativeHostClient implements NativeHostPort {
     }
 
     const correlationId = crypto.randomUUID();
-    const message = { type: 'NATIVE_COMMAND', id: correlationId, command, payload };
+    const message = {
+      type: 'NATIVE_COMMAND',
+      correlationId,
+      payload: { command, payload },
+      timestamp: Date.now(),
+      source: 'background'
+    };
 
     return new Promise((resolve) => {
       this.pending.set(correlationId, { resolve: resolve as any, reject: () => {} });
@@ -611,9 +620,9 @@ export class NativeHostClient implements NativeHostPort {
 | FR-NH-004 | Domain Services, Hexagonal | `ThemeService.ts`, `WatchService.ts` |
 | FR-NH-005 | Streaming, AsyncIterator | `WatchService.ts` |
 | FR-NH-006 | Encapsulation | `StdioTransport.ts` (JSON-RPC internal) |
-| FR-NH-007 | Security by design | `config.ts`, `validateThemePath.ts` |
+| FR-NH-007 | Security by design | `config.ts`, `validate.ts` |
 | SEC-NH-001 | No shell execution | `CliExecutor.ts` |
-| SEC-NH-002 | Path validation | `validateThemePath.ts` |
+| SEC-NH-002 | Path validation | `validate.ts` |
 | SEC-NH-003 | Input sanitization | `sanitizeArg.ts` |
 
 ---

@@ -147,10 +147,10 @@ The extension MUST declare the minimum viable set of permissions:
 ```typescript
 permissions: [
   "storage",         // Persist panel state, settings
-  "nativeMessaging", // Communicate with native host
   "activeTab",       // Read tab info for theme detection
   "scripting",       // Inject content script programmatically
   "alarms",          // Poll for native host health
+  "nativeMessaging", // Communicate with native host
 ] as const,
 ```
 
