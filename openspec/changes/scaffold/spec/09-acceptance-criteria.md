@@ -125,15 +125,15 @@ This document consolidates all Acceptance Criteria (ACs) for the `scaffold` chan
 
 | Module | Functional ACs | Non-Functional ACs | Quality ACs | Total |
 |--------|----------------|---------------------|-------------|-------|
-| Root Config | 8 | 0 | 3 | 11 |
+| Root Config | 4 | 2 | 2 | 8 |
 | Manifest | 6 | 2 | 0 | 8 |
 | Background SW | 5 | 2 | 0 | 7 |
-| DevTools Panel | 8 | 2 | 0 | 10 |
+| DevTools Panel | 5 | 2 | 0 | 14 |
 | Content Inspector | 4 | 2 | 0 | 6 |
 | Native Host | 5 | 2 | 0 | 7 |
 | Shared Core | 4 | 0 | 0 | 4 |
 | Cross-Cutting | 5 | 0 | 3 | 8 |
-| **TOTAL** | **45** | **10** | **6** | **61** |
+| **TOTAL** | **38** | **12** | **5** | **62** |
 
 *Note: Some ACs span multiple categories; counted in primary category.*
 
