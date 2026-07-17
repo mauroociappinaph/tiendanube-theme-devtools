@@ -1,6 +1,6 @@
 import * as esbuild from 'esbuild';
 import { readFileSync, copyFileSync, existsSync, mkdirSync, writeFileSync } from 'fs';
-import { resolve, dirname, extname } from 'path';
+import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -9,65 +9,68 @@ const isProduction = process.env.NODE_ENV === 'production';
 const isHostOnly = process.argv.includes('--host');
 
 /**
- * Manifest plugin — imports src/manifest.ts, serializes to dist/manifest.json,
- * injects version from package.json, strips dev keys in production.
+ * Manifest plugin — uses esbuild to transform src/manifest.ts to JS,
+ * then imports and serializes to dist/manifest.json.
  */
 const manifestPlugin = () => ({
   name: 'manifest',
   setup(build) {
     build.onEnd(async () => {
       const manifestPath = resolve(__dirname, 'src/manifest.ts');
+      const tempDir = resolve(__dirname, '.temp-manifest');
+      const tempFile = resolve(tempDir, 'manifest.mjs');
+      const outfile = resolve(__dirname, 'dist/manifest.json');
+
       try {
         readFileSync(manifestPath, 'utf-8');
       } catch {
-        throw new Error('manifestPlugin: src/manifest.ts must export a default object');
+        throw new Error('manifestPlugin: src/manifest.ts not found');
       }
 
-      // Dynamic import of the manifest module
-      const outfile = resolve(__dirname, 'dist/manifest.json');
-      const tempFile = resolve(__dirname, '.temp-manifest.mjs');
-
-      // Write a temporary wrapper to import the manifest and serialize it
-      const wrapper = [
-        `import manifest from ${JSON.stringify(manifestPath)};`,
-        `import { writeFileSync } from 'fs';`,
-        `const m = typeof manifest === 'function' ? manifest() : manifest;`,
-        `m.version = ${JSON.stringify(pkg.version)};`,
-        `if (${isProduction}) {`,
-        `  delete m.key;`,
-        `  if (m.permissions) {`,
-        `    m.permissions = m.permissions.filter(p => p !== 'debugger');`,
-        `  }`,
-        `}`,
-        `writeFileSync(${JSON.stringify(outfile)}, JSON.stringify(m, null, 2));`,
-      ].join('\n');
-
+      mkdirSync(tempDir, { recursive: true });
       mkdirSync(dirname(outfile), { recursive: true });
-      writeFileSync(tempFile, wrapper);
 
-      try {
-        // Use esbuild to bundle the wrapper and execute it
-        await esbuild.build({
-          entryPoints: [tempFile],
-          outfile: resolve(__dirname, '.temp-manifest-run.mjs'),
-          format: 'esm',
-          bundle: true,
-          platform: 'node',
-          target: 'node20',
-          plugins: [
-            {
-              name: 'alias-ts',
-              setup(b) {
-                b.onResolve({ filter: /\.ts$/ }, (args) => {
-                  return { path: args.path, external: true };
-                });
-              },
+      // Use esbuild to transform manifest.ts to a runnable .mjs file
+      await esbuild.build({
+        entryPoints: [manifestPath],
+        outfile: tempFile,
+        format: 'esm',
+        bundle: true,
+        platform: 'node',
+        target: 'node20',
+        sourcemap: false,
+        plugins: [
+          {
+            name: 'manifest-transform',
+            setup(b) {
+              b.onResolve({ filter: /\.ts$/ }, (args) => {
+                return { path: args.path };
+              });
             },
-          ],
-        });
-      } finally {
-        try { readFileSync(tempFile); } catch {}
+          },
+        ],
+      });
+
+      // Dynamically import the transformed manifest
+      const manifestModule = await import(tempFile);
+      const manifest = manifestModule.default;
+
+      // Apply version and production stripping
+      const finalManifest = typeof manifest === 'function' ? manifest() : manifest;
+      finalManifest.version = pkg.version;
+      
+      if (isProduction) {
+        delete finalManifest.key;
+        if (finalManifest.permissions) {
+          finalManifest.permissions = finalManifest.permissions.filter((p) => p !== 'debugger');
+        }
       }
+
+      writeFileSync(outfile, JSON.stringify(finalManifest, null, 2));
+      
+      // Cleanup
+      try { readFileSync(tempFile); } catch {}
+      try { readFileSync(resolve(tempDir, 'manifest.mjs.map')); } catch {}
     });
   },
 });

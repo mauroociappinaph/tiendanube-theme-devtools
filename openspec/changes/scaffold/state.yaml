@@ -1,6 +1,6 @@
 # DAG State — scaffold
-# Generated: 2026-07-16
-# Phase: tasks
+# Generated: 2026-07-17
+# Phase: archive (completed)
 
 completed_phases:
   - explore   # openspec/changes/scaffold/exploration.md
@@ -8,25 +8,25 @@ completed_phases:
   - spec      # openspec/changes/scaffold/spec/ (11 files, 00-10)
   - design    # openspec/changes/scaffold/design/ (10 files)
   - tasks     # openspec/changes/scaffold/tasks.md
+  - apply     # PR #1 feat/scaffold-01-foundation
+  - verify    # openspec/changes/scaffold/verify-report.md
+  - archive   # openspec/changes/scaffold/archive-report.md
 
-pending_phases:
-  - apply
-  - verify
-  - archive
+pending_phases: []
 
-current_phase: tasks
-next_phase: apply
-status: ready_for_apply
+current_phase: archive
+next_phase: null
+status: completed
 
 # Task state tracking
 tasks:
   # PR #1: Foundation
-  T-001: { status: pending, pr: 1 }
-  T-002: { status: pending, pr: 1 }
-  T-003: { status: pending, pr: 1 }
-  T-004: { status: pending, pr: 1 }
-  T-005: { status: pending, pr: 1 }
-  T-006: { status: pending, pr: 1 }
+  T-001: { status: completed, pr: 1, phase: archive }
+  T-002: { status: completed, pr: 1, phase: archive }
+  T-003: { status: completed, pr: 1, phase: archive }
+  T-004: { status: completed, pr: 1, phase: archive }
+  T-005: { status: completed, pr: 1, phase: archive }
+  T-006: { status: completed, pr: 1, phase: archive }
 
   # PR #2a: Shared Types
   T-007: { status: pending, pr: "2a" }
@@ -77,4 +77,5 @@ tasks:
 
 # Active PR tracking (for the apply phase)
 active_pr: null
-completed_prs: []
+completed_prs:
+  - 1

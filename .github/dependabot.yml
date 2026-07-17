@@ -1,0 +1,26 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    target-branch: "develop"
+    labels:
+      - "dependencies"
+    open-pull-requests-limit: 5
+    groups:
+      minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      - dependency-name: "@types/chrome"
+        update-type: "version-update:semver-major"
+      - dependency-name: "typescript"
+        update-type: "version-update:semver-major"
+      - dependency-name: "esbuild"
+        update-type: "version-update:semver-major"
