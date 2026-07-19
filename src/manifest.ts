@@ -1,11 +1,13 @@
 import { defineManifest } from './shared/types/manifest';
 
+export { defineManifest };
+
 export default defineManifest({
   manifest_version: 3,
   name: 'Tienda Nube Theme DevTools',
-  version: '0.1.0',
+  version: '__VERSION__',
   description: 'Chrome DevTools extension for Tienda Nube / Nuvemshop theme development',
-  permissions: ['storage', 'activeTab', 'scripting', 'alarms', 'nativeMessaging', 'devtools'],
+  permissions: ['storage', 'activeTab', 'scripting', 'alarms', 'nativeMessaging'],
   host_permissions: ['https://*.tiendanube.com/*', 'https://*.nuvemshop.com.br/*'],
   background: {
     service_worker: 'background/service-worker.js',
@@ -25,6 +27,6 @@ export default defineManifest({
     128: 'icons/icon128.png',
   },
   content_security_policy: {
-    extension_pages: "script-src 'self'; object-src 'self'; style-src 'self' 'unsafe-inline';",
+    extension_pages: "script-src 'self'; object-src 'self'; style-src 'self';",
   },
 });
