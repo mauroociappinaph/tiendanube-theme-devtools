@@ -48,7 +48,11 @@ export class DomainError extends Error {
     super(message);
     this.name = this.constructor.name;
     this.code = code;
-    this.context = context;
+    // Establecer contexto - si es null explícito, mantenerlo como null
+    // Si es undefined, no establecer (dejar undefined)
+    if (context !== undefined) {
+      this.context = context === null ? null : context;
+    }
     this.cause = cause;
     this.timestamp = new Date();
     
@@ -90,24 +94,28 @@ export class ValidationError extends DomainError {
    * Crea una nueva instancia de ValidationError
    * @param message Mensaje del error (default: 'Validation failed')
    * @param field Campo específico que falló (opcional)
-   * @param message Campo específico que falló (opcional)
+   * @param context Contexto adicional (opcional)
    * @param cause Causa original (opcional)
    */
   constructor(
     message: string = 'Validation failed',
     field?: string,
-    fieldMessage?: string,
+    context?: unknown,
     cause?: unknown
   ) {
-    let context;
+    let finalContext;
     
-    if (field !== undefined && fieldMessage !== undefined) {
-      context = { field, message: fieldMessage };
+    // Si context es un objeto, úsalo directamente
+    if (context !== undefined && typeof context === 'object' && context !== null && !Array.isArray(context)) {
+      finalContext = context;
+    } else if (field !== undefined && context !== undefined && typeof context !== 'object') {
+      // Si field y context son ambos strings o simples, crea contexto con field
+      finalContext = { field, message: context };
     } else if (field !== undefined) {
-      context = { field };
+      finalContext = { field };
     }
     
-    super(message, 'VALIDATION_ERROR', context, cause);
+    super(message, 'VALIDATION_ERROR', finalContext, cause);
     this.name = 'ValidationError';
   }
 }
@@ -130,11 +138,18 @@ export class NotFoundError extends DomainError {
     cause?: unknown
   ) {
     let message = `${resource} not found`;
-    let finalContext = context;
+    let finalContext;
     
     if (id) {
       message = `${resource} with ID ${id} not found`;
-      finalContext = { resource, id, ...context };
+      finalContext = { resource, id };
+    } else {
+      finalContext = { resource };
+    }
+    
+    // Si se pasó contexto adicional, combínalo
+    if (context !== undefined) {
+      finalContext = { ...finalContext, ...(typeof context === 'object' && context !== null ? context : {}) };
     }
     
     super(message, 'NOT_FOUND', finalContext, cause);

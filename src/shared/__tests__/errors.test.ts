@@ -10,6 +10,7 @@ import {
   BadRequestError,
   NetworkError
 } from '../errors';
+import { Result } from '../result';
 
 describe('DomainError System - Custom Error Hierarchy', () => {
   describe('DomainError Base Class', () => {
