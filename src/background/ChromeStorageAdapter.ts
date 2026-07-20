@@ -2,29 +2,19 @@
 // Implements StoragePort using chrome.storage.local
 
 import type { StoragePort, StorageSchema, StorageArea } from '@shared/ports/StoragePort';
-import type { Result } from '@shared/result';
-import type { DomainError } from '@shared/errors';
-import { ok, err } from '@shared/result';
+import { InternalServerError } from '@shared/errors';
+import { Result } from '@shared/result';
 import { createLogger } from '@shared/logger';
 
 const logger = createLogger('background:chrome-storage-adapter');
 
-function toDomainError(operation: 'get' | 'set' | 'remove' | 'observe' | 'migrate' | 'clear', key: string, cause: unknown): DomainError {
-  return { _tag: 'StorageError', operation, key, cause };
+function toDomainError(operation: 'get' | 'set' | 'remove' | 'observe' | 'migrate' | 'clear', key: string, cause: unknown): InternalServerError {
+  return new InternalServerError(`${operation} failed for ${key}`, { operation, key }, cause);
 }
 
-function domainErrorToError(e: DomainError): Error {
-  if (e._tag === 'InternalError') {
-    const err = new Error(e.message);
-    err.cause = e.cause;
-    return err;
-  }
-  if (e._tag === 'StorageError') {
-    const err = new Error(`${e.operation} failed for ${e.key}`);
-    err.cause = e.cause as Error | undefined;
-    return err;
-  }
-  const err = new Error(`${e._tag}: ${JSON.stringify(e)}`);
+function domainErrorToError(e: InternalServerError): Error {
+  const err = new Error(e.message);
+  err.cause = e.cause;
   return err;
 }
 
@@ -46,26 +36,26 @@ export class ChromeStorageAdapter implements StoragePort {
         }
       }
 
-      return ok(hasAny ? (picked as Pick<StorageSchema, T>) : null);
+      return Result.ok(hasAny ? (picked as Pick<StorageSchema, T>) : null);
     } catch (error: unknown) {
       const domainErr = toDomainError('get', String(keys), error);
       logger.error('Storage get failed', domainErrorToError(domainErr), { keys, area });
-      return err(domainErr);
+      return Result.err(domainErr);
     }
   }
 
   async set<T extends keyof StorageSchema>(
     data: Pick<StorageSchema, T>,
     area: StorageArea = 'local'
-  ): Promise<Result<void, DomainError>> {
+  ): Promise<Result<void, InternalServerError>> {
     try {
       const storage = this.getStorage(area);
       await storage.set(data);
-      return ok(undefined);
+      return Result.ok(undefined);
     } catch (error: unknown) {
       const domainErr = toDomainError('set', JSON.stringify(data), error);
       logger.error('Storage set failed', domainErrorToError(domainErr), { data, area });
-      return err(domainErr);
+      return Result.err(domainErr);
     }
   }
 
@@ -73,11 +63,11 @@ export class ChromeStorageAdapter implements StoragePort {
     try {
       const storage = this.getStorage(area);
       await storage.remove(keys);
-      return ok(undefined);
+      return Result.ok(undefined);
     } catch (error: unknown) {
       const domainErr = toDomainError('remove', JSON.stringify(keys), error);
       logger.error('Storage remove failed', domainErrorToError(domainErr), { keys, area });
-      return err(domainErr);
+      return Result.err(domainErr);
     }
   }
 
@@ -85,11 +75,11 @@ export class ChromeStorageAdapter implements StoragePort {
     try {
       const storage = this.getStorage(area);
       await storage.clear();
-      return ok(undefined);
+      return Result.ok(undefined);
     } catch (error: unknown) {
       const domainErr = toDomainError('clear', 'all', error);
       logger.error('Storage clear failed', domainErrorToError(domainErr), { area });
-      return err(domainErr);
+      return Result.err(domainErr);
     }
   }
 
@@ -116,7 +106,7 @@ export class ChromeStorageAdapter implements StoragePort {
   ): Promise<Result<void, DomainError>> {
     try {
       const currentResult = await this.get(['schemaVersion'] as const);
-      if (currentResult._tag === 'Err') return ok(undefined);
+      if (currentResult.isErr) return currentResult.map(() => {});
 
       if (currentResult.value?.schemaVersion === fromVersion) {
         const allDataResult = await this.get(['mode', 'themePath', 'inspectMode', 'schemaVersion'] as const);
@@ -126,11 +116,11 @@ export class ChromeStorageAdapter implements StoragePort {
           if (setResult._tag === 'Err') return setResult;
         }
       }
-      return ok(undefined);
+      return Result.ok(undefined);
     } catch (error: unknown) {
       const domainErr = toDomainError('migrate', fromVersion, error);
       logger.error('Storage migrate failed', domainErrorToError(domainErr), { fromVersion });
-      return err(domainErr);
+      return Result.err(domainErr);
     }
   }
 
