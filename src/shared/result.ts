@@ -127,10 +127,15 @@ export class Result<T, E> {
    * Aplana resultados anidados
    * @returns Result aplanado
    */
-  flat(): Result<T, E> {
-    // Para esta implementación simple, devolvemos this mismo
-    // En una implementación más avanzada, manejaría Result<Result<T, E>, E>
-    return this;
+  flat(): Result<unknown, E> {
+    if (this.isOk) {
+      const value = this._value;
+      // Si el valor es otro Result, lo aplanamos
+      if (value instanceof Result) {
+        return value.flat();
+      }
+    }
+    return this as unknown as Result<unknown, E>;
   }
 }
 
