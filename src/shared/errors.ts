@@ -4,7 +4,7 @@
 export type DomainError =
   | { _tag: 'NotFound'; resource: string; id: string }
   | { _tag: 'ValidationFailed'; errors: Record<string, string[]> }
-  | { _tag: 'StorageError'; operation: 'get' | 'set' | 'remove' | 'observe' | 'migrate'; key: string; cause: unknown }
+  | { _tag: 'StorageError'; operation: 'get' | 'set' | 'remove' | 'observe' | 'migrate' | 'clear'; key: string; cause: unknown }
   | { _tag: 'MessageTimeout'; correlationId: string }
   | { _tag: 'MessageSizeExceeded'; size: number; limit: number }
   | { _tag: 'NativeHostUnavailable'; reason: string }

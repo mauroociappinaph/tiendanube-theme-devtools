@@ -123,6 +123,7 @@ declare namespace chrome.runtime {
   >;
   const onConnect: chrome.events.Event<(port: Port) => void>;
   const onConnectExternal: chrome.events.Event<(port: Port) => void>;
+  const onConnectNative: chrome.events.Event<(port: Port) => void>;
   const onInstalled: chrome.events.Event<(details: { reason: 'install' | 'update' | 'chrome_update' | 'shared_module_update'; previousVersion?: string }) => void>;
   const onStartup: chrome.events.Event<() => void>;
 

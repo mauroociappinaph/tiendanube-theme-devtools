@@ -15,6 +15,7 @@ completed_phases:
   - archive   # (via PR #2b archive — state update only)
   - verify    # openspec/changes/scaffold/verify-report-2b.md (PR #2b)
   - archive   # openspec/changes/scaffold/archive-report-2b.md (PR #2b)
+  - archive   # openspec/changes/scaffold/archive-report-3.md (PR #3)
 
 pending_phases: []
 
@@ -46,10 +47,10 @@ tasks:
   T-015: { status: completed, pr: "2b", phase: archive }
 
   # PR #3: Background (was PR #3, now PR #3)
-  T-016: { status: pending, pr: 3 }
-  T-017: { status: pending, pr: 3 }
-  T-018: { status: pending, pr: 3 }
-  T-019: { status: pending, pr: 3 }
+  T-016: { status: verified, pr: 3 }
+  T-017: { status: verified, pr: 3 }
+  T-018: { status: verified, pr: 3 }
+  T-019: { status: verified, pr: 3 }
 
   # PR #4: DevTools Panel (was PR #4, now PR #4)
   T-020: { status: pending, pr: 4 }
@@ -85,3 +86,4 @@ completed_prs:
   - 1
   - "2a"
   - "2b"
+  - "3"

@@ -61,7 +61,7 @@ export const LoggingMiddleware: Middleware = {
     const start = Date.now();
     try {
       const result = await next();
-      console.debug('[CommandBus] Completed:', command.name, String(Date.now() - start) + 'ms');
+      console.debug('[CommandBus] Completed:', command.name, `${String(Date.now() - start)  }ms`);
       return result;
     } catch (error) {
       console.error('[CommandBus] Failed:', command.name, error);
@@ -75,7 +75,7 @@ export const TimingMiddleware: Middleware = {
   async execute(command, next) {
     const start = Date.now();
     const result = await next();
-    console.debug('[CommandBus] Timing:', command.name, String(Date.now() - start) + 'ms');
+    console.debug('[CommandBus] Timing:', command.name, `${String(Date.now() - start)  }ms`);
     return result;
   },
 };

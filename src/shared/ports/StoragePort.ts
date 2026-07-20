@@ -1,3 +1,6 @@
+import type { Result } from '@shared/result';
+import type { DomainError } from '@shared/errors';
+
 export interface StorageSchema {
   mode: 'local' | 'remote';
   themePath: string;
@@ -11,15 +14,15 @@ export interface StoragePort {
   get<T extends keyof StorageSchema>(
     keys: T[],
     area?: StorageArea
-  ): Promise<Pick<StorageSchema, T> | null>;
+  ): Promise<Result<Pick<StorageSchema, T> | null, DomainError>>;
 
   set<T extends keyof StorageSchema>(
     data: Pick<StorageSchema, T>,
     area?: StorageArea
-  ): Promise<void>;
+  ): Promise<Result<void, DomainError>>;
 
-  remove(keys: string[], area?: StorageArea): Promise<void>;
-  clear(area?: StorageArea): Promise<void>;
+  remove(keys: string[], area?: StorageArea): Promise<Result<void, DomainError>>;
+  clear(area?: StorageArea): Promise<Result<void, DomainError>>;
 
   observe<T extends keyof StorageSchema>(
     key: T,
@@ -30,5 +33,5 @@ export interface StoragePort {
     fromVersion: string,
     toVersion: string,
     migrationFn: (oldData: Record<string, unknown>) => Record<string, unknown>
-  ): Promise<void>;
+  ): Promise<Result<void, DomainError>>;
 }

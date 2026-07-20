@@ -146,6 +146,14 @@ async function main() {
       '.html': 'copy',
       '.css': 'local-css',
     },
+    // Path aliases from package.json _moduleAliases
+    alias: {
+      '@shared': resolve(__dirname, 'src/shared'),
+      '@background': resolve(__dirname, 'src/background'),
+      '@devtools': resolve(__dirname, 'src/devtools'),
+      '@content': resolve(__dirname, 'src/content'),
+      '@native-host': resolve(__dirname, 'src/native-host'),
+    },
     plugins: [
       manifestPlugin(),
       copyPlugin(staticAssets),
