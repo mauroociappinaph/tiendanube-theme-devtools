@@ -21,7 +21,7 @@ function domainErrorToError(e: DomainError): Error {
   }
   if (e._tag === 'StorageError') {
     const err = new Error(`${e.operation} failed for ${e.key}`);
-    err.cause = e.cause as Error | undefined;
+    err.cause = e.cause;
     return err;
   }
   const err = new Error(`${e._tag}: ${JSON.stringify(e)}`);
@@ -35,20 +35,23 @@ const container = createContainer();
 container.register(StoragePortToken, () => new ChromeStorageAdapter());
 container.register(NativeHostPortToken, () => new NativeHostClient());
 container.register(MessagingPortToken, () => ({
-  send: async <T>(message: ExtensionMessage): Promise<T> => { /* handled by router */ return undefined as unknown as T; },
+  send: <T>(_message: ExtensionMessage): Promise<T> => { /* handled by router */ return Promise.resolve(undefined as unknown as T); },
   onMessage: () => { /* handled by router */ },
   connect: () => Promise.resolve(),
-  disconnect: () => {},
+  disconnect: () => {
+    // Intentionally empty - cleanup handled by message router
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
+  },
 }));
 
 // ---- Service Worker Lifecycle ----
 chrome.runtime.onInstalled.addListener(async (details) => {
   logger.info('Extension installed/updated', { reason: details.reason });
-  
+   
   // BLOCKER: Initialize on install/update
   await initialize();
 
-  if (details.reason === 'install') {
+  if (details.reason === chrome.runtime.OnInstalledReason.INSTALL) {
     // Initialize default settings
     const storage = container.resolve(StoragePortToken);
     const result = await storage.set({
@@ -60,7 +63,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     if (result._tag === 'Err') {
       logger.error('Failed to initialize defaults', domainErrorToError(result.error), { error: result.error });
     }
-  } else if (details.reason === 'update') {
+  } else if (details.reason === chrome.runtime.OnInstalledReason.UPDATE) {
     // Migrate settings if needed
     const storage = container.resolve(StoragePortToken);
     const result = await storage.migrate('1.0.0', '1.0.0', (old) => old); // no-op for now
@@ -102,7 +105,7 @@ async function initialize(): Promise<void> {
     
     // Register messaging port with the router itself
     container.registerInstance(MessagingPortToken, {
-      send: (message) => messageRouter!.handleMessage(message, { tab: { id: 0 } } as chrome.runtime.MessageSender, () => {}),
+      send: <T>(message: ExtensionMessage): Promise<T> => messageRouter!.handleMessage(message, { tab: { id: 0 } } as chrome.runtime.MessageSender, () => {}) as Promise<T>,
       onMessage: () => { /* handled by router */ },
       connect: async () => {},
       disconnect: () => {},
@@ -140,19 +143,6 @@ function setupMessageListeners(): void {
       messageRouter.handlePanelConnection(port);
     } else if (port.name === 'content-script') {
       messageRouter.handleContentConnection(port);
-    }
-  });
-
-  // Native host connection
-  chrome.runtime.onConnectNative.addListener((port) => {
-    if (nativeHostClient) {
-      // Native host connection is handled by the client
-      port.onMessage.addListener((message) => {
-        logger.debug('Native host message', { message });
-      });
-      port.onDisconnect.addListener(() => {
-        logger.warn('Native host port disconnected');
-      });
     }
   });
 }

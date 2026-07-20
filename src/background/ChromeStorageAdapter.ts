@@ -116,12 +116,12 @@ export class ChromeStorageAdapter implements StoragePort {
   ): Promise<Result<void, DomainError>> {
     try {
       const currentResult = await this.get(['schemaVersion'] as const);
-      if (!currentResult || currentResult._tag === 'Err') return ok(undefined);
+      if (currentResult._tag === 'Err') return ok(undefined);
 
       if (currentResult.value?.schemaVersion === fromVersion) {
         const allDataResult = await this.get(['mode', 'themePath', 'inspectMode', 'schemaVersion'] as const);
-        if (allDataResult && allDataResult._tag === 'Ok' && allDataResult.value) {
-          const migrated = migrationFn(allDataResult.value as Record<string, unknown>);
+        if (allDataResult._tag === 'Ok' && allDataResult.value) {
+          const migrated = migrationFn(allDataResult.value);
           const setResult = await this.set(migrated as Pick<StorageSchema, keyof StorageSchema>);
           if (setResult._tag === 'Err') return setResult;
         }

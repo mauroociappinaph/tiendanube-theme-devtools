@@ -142,13 +142,11 @@ return new Promise((resolve, _reject) => {
       const maxStr = String(this.maxRetries);
       logger.info(`Reconnecting to native host (attempt ${attemptStr}/${maxStr}) in ${String(delay)}ms`);
       
-      void setTimeout(async () => {
-        try {
-          await this.connect();
-        } catch (error: unknown) {
+      setTimeout(() => {
+        void this.connect().catch((error: unknown) => {
           const err = error instanceof Error ? error : new Error(String(error));
           logger.error('Reconnection failed', err);
-        }
+        });
       }, delay);
     } else {
       logger.error('Max reconnection attempts reached');

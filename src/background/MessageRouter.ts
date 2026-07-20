@@ -112,9 +112,10 @@ export class MessageRouter {
     logger.info('DevTools panel connected', { tabId });
 
     port.onMessage.addListener((message) => {
-      void this.handleMessage(message, { tab: { id: tabId } } as chrome.runtime.MessageSender, (response) => {
+      const handled = this.handleMessage(message, { tab: { id: tabId } } as chrome.runtime.MessageSender, (response) => {
         port.postMessage(response);
       });
+      void handled;
     });
 
     port.onDisconnect.addListener(() => {
@@ -133,7 +134,7 @@ export class MessageRouter {
     });
   }
 
-  handleContentConnection(port: chrome.runtime.Port): void {
+handleContentConnection(port: chrome.runtime.Port): void {
     port.onMessage.addListener((message) => {
       void this.handleMessage(message, { tab: { id: 0 } } as chrome.runtime.MessageSender, (response) => {
         port.postMessage(response);
@@ -180,9 +181,10 @@ export class MessageRouter {
 
   private async getThemeInfo(): Promise<{ connected: boolean; version: string }> {
     const storage = await this.storage.get(['mode', 'themePath']);
+    const mode = storage._tag === 'Ok' ? storage.value?.mode : undefined;
     return {
       connected: this.nativeHostStatus === 'connected',
-      version: storage?.mode ?? 'unknown'
+      version: mode ?? 'unknown'
     };
   }
 

@@ -17,13 +17,13 @@ const ALARM_CONFIGS: Record<AlarmName, { periodInMinutes: number }> = {
   [ALARM_NAMES.THEME_RELOAD_CHECK]: { periodInMinutes: 5 }
 };
 
-export async function createAll(): Promise<void> {
-  await Promise.all(
-    Object.entries(ALARM_CONFIGS).map(([name, config]) => {
-      chrome.alarms.create(name, { periodInMinutes: config.periodInMinutes });
+export function createAll(): Promise<void> {
+  return Promise.all(
+    Object.entries(ALARM_CONFIGS).map(async ([name, config]) => {
+      await chrome.alarms.create(name, { periodInMinutes: config.periodInMinutes });
       logger.debug('Alarm created', { name, periodInMinutes: config.periodInMinutes });
     })
-  );
+  ) as unknown as Promise<void>;
 }
 
 export async function clearAll(): Promise<void> {

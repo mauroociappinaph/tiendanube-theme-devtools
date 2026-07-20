@@ -52,3 +52,5 @@ native-host/
 # Misc
 *.pem
 *.tsbuildinfo
+# Local Pi runtime state
+.atl/
