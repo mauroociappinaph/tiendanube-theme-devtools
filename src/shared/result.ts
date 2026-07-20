@@ -180,9 +180,4 @@ export class Err<T, E> extends Result<T, E> {
   }
 }
 
-// Exportaciones directas para compatibilidad
-export const Result = {
-  ok: Result.ok,
-  err: Result.err,
-  fromPromise: Result.fromPromise,
-};
+
