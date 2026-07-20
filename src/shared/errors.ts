@@ -1,66 +1,275 @@
-// src/shared/errors.ts
-// DomainError discriminated union — all error types used across the extension
+/**
+ * Sistema de errores personalizados para el dominio
+ * 
+ * Este módulo implementa un sistema de errores jerárquico basado en DomainError
+ * siguiendo el patrón de errores personalizados de TypeScript.
+ * 
+ * @module errors
+ */
 
-export type DomainError =
-  | { _tag: 'NotFound'; resource: string; id: string }
-  | { _tag: 'ValidationFailed'; errors: Record<string, string[]> }
-  | { _tag: 'StorageError'; operation: 'get' | 'set' | 'remove' | 'observe' | 'migrate' | 'clear'; key: string; cause: unknown }
-  | { _tag: 'MessageTimeout'; correlationId: string }
-  | { _tag: 'MessageSizeExceeded'; size: number; limit: number }
-  | { _tag: 'NativeHostUnavailable'; reason: string }
-  | { _tag: 'NativeHostError'; code: number; message: string }
-  | { _tag: 'CommandNotFound'; command: string }
-  | { _tag: 'PathTraversal'; path: string }
-  | { _tag: 'PathNotAllowed'; path: string; allowedBases: string[] }
-  | { _tag: 'ParamTooLong'; max: number; actual: number }
-  | { _tag: 'ForbiddenPattern'; pattern: string; input: string }
-  | { _tag: 'CliExecutionFailed'; command: string; exitCode: number; stderr: string }
-  | { _tag: 'CliTimeout'; command: string; timeoutMs: number }
-  | { _tag: 'InternalError'; message: string; cause?: unknown };
+/**
+ * Error base para el dominio
+ * Extiende el Error nativo de JavaScript con propiedades adicionales
+ */
+export class DomainError extends Error {
+  /**
+   * Código único del error
+   */
+  readonly code: string;
 
-// Type guards for exhaustiveness checking
-export function isNotFound(e: DomainError): e is DomainError & { _tag: 'NotFound' } {
-  return e._tag === 'NotFound';
+  /**
+   * Contexto adicional del error (opcional)
+   */
+  readonly context?: unknown;
+
+  /**
+   * Causa original del error (opcional)
+   */
+  readonly cause?: unknown;
+
+  /**
+   * Timestamp del error
+   */
+  readonly timestamp: Date;
+
+  /**
+   * Crea una nueva instancia de DomainError
+   * @param message Mensaje del error
+   * @param code Código único del error (default: 'DOMAIN_ERROR')
+   * @param context Contexto adicional (opcional)
+   * @param cause Causa original (opcional)
+   */
+  constructor(
+    message: string,
+    code: string = 'DOMAIN_ERROR',
+    context?: unknown,
+    cause?: unknown
+  ) {
+    super(message);
+    this.name = this.constructor.name;
+    this.code = code;
+    this.context = context;
+    this.cause = cause;
+    this.timestamp = new Date();
+    
+    // Mantener la pila de llamadas original
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, this.constructor);
+    }
+  }
+
+  /**
+   * Convierte el error a JSON para logging/serialización
+   * @returns Objeto con los datos del error
+   */
+  toJSON() {
+    return {
+      name: this.name,
+      message: this.message,
+      code: this.code,
+      timestamp: this.timestamp.toISOString(),
+      context: this.context,
+      stack: this.stack?.split('\n').slice(0, 5).join('\n')
+    };
+  }
+
+  /**
+   * Representación en string del error
+   * @returns String con información del error
+   */
+  toString(): string {
+    return `${this.name} [${this.code}]: ${this.message}`;
+  }
 }
-export function isValidationFailed(e: DomainError): e is DomainError & { _tag: 'ValidationFailed' } {
-  return e._tag === 'ValidationFailed';
+
+/**
+ * Error de validación - para errores de validación de datos
+ */
+export class ValidationError extends DomainError {
+  /**
+   * Crea una nueva instancia de ValidationError
+   * @param message Mensaje del error (default: 'Validation failed')
+   * @param field Campo específico que falló (opcional)
+   * @param message Campo específico que falló (opcional)
+   * @param cause Causa original (opcional)
+   */
+  constructor(
+    message: string = 'Validation failed',
+    field?: string,
+    fieldMessage?: string,
+    cause?: unknown
+  ) {
+    let context;
+    
+    if (field !== undefined && fieldMessage !== undefined) {
+      context = { field, message: fieldMessage };
+    } else if (field !== undefined) {
+      context = { field };
+    }
+    
+    super(message, 'VALIDATION_ERROR', context, cause);
+    this.name = 'ValidationError';
+  }
 }
-export function isStorageError(e: DomainError): e is DomainError & { _tag: 'StorageError' } {
-  return e._tag === 'StorageError';
+
+/**
+ * Error de recurso no encontrado
+ */
+export class NotFoundError extends DomainError {
+  /**
+   * Crea una nueva instancia de NotFoundError
+   * @param resource Tipo de recurso (default: 'Resource')
+   * @param id ID del recurso no encontrado (opcional)
+   * @param context Contexto adicional (opcional)
+   * @param cause Causa original (opcional)
+   */
+  constructor(
+    resource: string = 'Resource',
+    id?: string,
+    context?: unknown,
+    cause?: unknown
+  ) {
+    let message = `${resource} not found`;
+    let finalContext = context;
+    
+    if (id) {
+      message = `${resource} with ID ${id} not found`;
+      finalContext = { resource, id, ...context };
+    }
+    
+    super(message, 'NOT_FOUND', finalContext, cause);
+    this.name = 'NotFoundError';
+  }
 }
-export function isMessageTimeout(e: DomainError): e is DomainError & { _tag: 'MessageTimeout' } {
-  return e._tag === 'MessageTimeout';
+
+/**
+ * Error interno del servidor
+ */
+export class InternalServerError extends DomainError {
+  /**
+   * Crea una nueva instancia de InternalServerError
+   * @param message Mensaje del error (default: 'Internal server error occurred')
+   * @param context Contexto adicional (opcional)
+   * @param cause Causa original (opcional)
+   */
+  constructor(
+    message: string = 'Internal server error occurred',
+    context?: unknown,
+    cause?: unknown
+  ) {
+    super(message, 'INTERNAL_SERVER_ERROR', context, cause);
+    this.name = 'InternalServerError';
+  }
 }
-export function isMessageSizeExceeded(e: DomainError): e is DomainError & { _tag: 'MessageSizeExceeded' } {
-  return e._tag === 'MessageSizeExceeded';
+
+/**
+ * Error de autenticación requerida
+ */
+export class UnauthorizedError extends DomainError {
+  /**
+   * Crea una nueva instancia de UnauthorizedError
+   * @param message Mensaje del error (default: 'Authentication required')
+   * @param context Contexto adicional (opcional)
+   * @param cause Causa original (opcional)
+   */
+  constructor(
+    message: string = 'Authentication required',
+    context?: unknown,
+    cause?: unknown
+  ) {
+    super(message, 'UNAUTHORIZED', context, cause);
+    this.name = 'UnauthorizedError';
+  }
 }
-export function isNativeHostUnavailable(e: DomainError): e is DomainError & { _tag: 'NativeHostUnavailable' } {
-  return e._tag === 'NativeHostUnavailable';
+
+/**
+ * Error de acceso prohibido
+ */
+export class ForbiddenError extends DomainError {
+  /**
+   * Crea una nueva instancia de ForbiddenError
+   * @param message Mensaje del error (default: 'Access denied')
+   * @param context Contexto adicional (opcional)
+   * @param cause Causa original (opcional)
+   */
+  constructor(
+    message: string = 'Access denied',
+    context?: unknown,
+    cause?: unknown
+  ) {
+    super(message, 'FORBIDDEN', context, cause);
+    this.name = 'ForbiddenError';
+  }
 }
-export function isNativeHostError(e: DomainError): e is DomainError & { _tag: 'NativeHostError' } {
-  return e._tag === 'NativeHostError';
+
+/**
+ * Error de conflicto de recursos
+ */
+export class ConflictError extends DomainError {
+  /**
+   * Crea una nueva instancia de ConflictError
+   * @param message Mensaje del error (default: 'Resource conflict occurred')
+   * @param context Contexto adicional (opcional)
+   * @param cause Causa original (opcional)
+   */
+  constructor(
+    message: string = 'Resource conflict occurred',
+    context?: unknown,
+    cause?: unknown
+  ) {
+    super(message, 'CONFLICT', context, cause);
+    this.name = 'ConflictError';
+  }
 }
-export function isCommandNotFound(e: DomainError): e is DomainError & { _tag: 'CommandNotFound' } {
-  return e._tag === 'CommandNotFound';
+
+/**
+ * Error de solicitud incorrecta
+ */
+export class BadRequestError extends DomainError {
+  /**
+   * Crea una nueva instancia de BadRequestError
+   * @param message Mensaje del error (default: 'Bad request')
+   * @param context Contexto adicional (opcional)
+   * @param cause Causa original (opcional)
+   */
+  constructor(
+    message: string = 'Bad request',
+    context?: unknown,
+    cause?: unknown
+  ) {
+    super(message, 'BAD_REQUEST', context, cause);
+    this.name = 'BadRequestError';
+  }
 }
-export function isPathTraversal(e: DomainError): e is DomainError & { _tag: 'PathTraversal' } {
-  return e._tag === 'PathTraversal';
+
+/**
+ * Error de red o comunicación
+ */
+export class NetworkError extends DomainError {
+  /**
+   * Crea una nueva instancia de NetworkError
+   * @param message Mensaje del error (default: 'Network request failed')
+   * @param context Contexto adicional (opcional)
+   * @param cause Causa original (opcional)
+   */
+  constructor(
+    message: string = 'Network request failed',
+    context?: unknown,
+    cause?: unknown
+  ) {
+    super(message, 'NETWORK_ERROR', context, cause);
+    this.name = 'NetworkError';
+  }
 }
-export function isPathNotAllowed(e: DomainError): e is DomainError & { _tag: 'PathNotAllowed' } {
-  return e._tag === 'PathNotAllowed';
-}
-export function isParamTooLong(e: DomainError): e is DomainError & { _tag: 'ParamTooLong' } {
-  return e._tag === 'ParamTooLong';
-}
-export function isForbiddenPattern(e: DomainError): e is DomainError & { _tag: 'ForbiddenPattern' } {
-  return e._tag === 'ForbiddenPattern';
-}
-export function isCliExecutionFailed(e: DomainError): e is DomainError & { _tag: 'CliExecutionFailed' } {
-  return e._tag === 'CliExecutionFailed';
-}
-export function isCliTimeout(e: DomainError): e is DomainError & { _tag: 'CliTimeout' } {
-  return e._tag === 'CliTimeout';
-}
-export function isInternalError(e: DomainError): e is DomainError & { _tag: 'InternalError' } {
-  return e._tag === 'InternalError';
-}
+
+// Exportaciones adicionales para compatibilidad
+export const DomainErrors = {
+  ValidationError,
+  NotFoundError,
+  InternalServerError,
+  UnauthorizedError,
+  ForbiddenError,
+  ConflictError,
+  BadRequestError,
+  NetworkError,
+};
