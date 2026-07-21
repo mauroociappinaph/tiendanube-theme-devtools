@@ -205,6 +205,23 @@ export class MessageRouter {
   }
 
   private async forwardToNativeHost(command: string, payload: unknown): Promise<void> {
+    // Validate command is allowed (defense in depth - also validated in NativeHostClient)
+    const ALLOWED_COMMANDS = new Set<string>([
+      'system.health',
+      'theme.reload',
+      'theme.push',
+      'theme.pull',
+      'theme.validate',
+      'cli.execute',
+      'fs.read',
+      'fs.write',
+      'fs.watch',
+      'fs.unwatch',
+    ]);
+    if (!ALLOWED_COMMANDS.has(command)) {
+      logger.warn('Blocked unallowed native command', { command });
+      throw new Error(`Command not allowed: ${command}`);
+    }
     await this.nativeHost.send(command, payload);
   }
 

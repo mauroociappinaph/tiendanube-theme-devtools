@@ -70,13 +70,16 @@ vi.mock('../NativeHostClient', () => ({
   })),
 }));
 
-vi.mock('../MessageRouter', () => ({
-  MessageRouter: vi.fn().mockImplementation(() => ({
-    handleMessage: vi.fn(),
-    handlePanelConnection: vi.fn(),
-    handleContentConnection: vi.fn(),
-  })),
-}));
+vi.mock('../MessageRouter', () => {
+  const MessageRouter = vi.fn().mockImplementation(function(this: unknown) {
+    return {
+      handleMessage: vi.fn(),
+      handlePanelConnection: vi.fn(),
+      handleContentConnection: vi.fn(),
+    };
+  });
+  return { MessageRouter };
+});
 
 vi.mock('./alarms', () => ({
   createAll: vi.fn().mockImplementation(async () => {

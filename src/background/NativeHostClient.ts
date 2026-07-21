@@ -23,6 +23,26 @@ interface NativeMessage {
   payload?: unknown;
 }
 
+// Allowed commands for native host communication - prevent command injection
+const ALLOWED_COMMANDS = new Set<string>([
+  'system.health',
+  'theme.reload',
+  'theme.push',
+  'theme.pull',
+  'theme.validate',
+  'cli.execute',
+  'fs.read',
+  'fs.write',
+  'fs.watch',
+  'fs.unwatch',
+]);
+
+function assertAllowedCommand(command: string): void {
+  if (!ALLOWED_COMMANDS.has(command)) {
+    throw new Error(`Command not allowed: ${command}`);
+  }
+}
+
 export class NativeHostClient implements NativeHostPort {
   private port: chrome.runtime.Port | null = null;
   private pending = new Map<string, PendingRequest>();
@@ -66,6 +86,13 @@ export class NativeHostClient implements NativeHostPort {
   async send<T>(command: string, payload: unknown): Promise<Result<T, DomainError>> {
     if (!this.port) {
       return Result.err(new DomainError('Not connected', 'NATIVE_HOST_UNAVAILABLE'));
+    }
+
+    // Validate command is allowed
+    try {
+      assertAllowedCommand(command);
+    } catch (error) {
+      return Result.err(new DomainError(String(error), 'COMMAND_NOT_ALLOWED', { command }));
     }
 
     const correlationId = crypto.randomUUID();
