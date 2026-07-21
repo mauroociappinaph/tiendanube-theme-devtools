@@ -13,8 +13,8 @@ export function useConnectionState(): ConnectionState {
 
   useEffect(() => {
     const unsubscribe = onMessage((msg: ExtensionMessage) => {
-      if (msg.type === 'NATIVE_HOST_STATUS_CHANGED') {
-        store.nativeHostStatus.value = 'connected';
+      if (msg.type === 'THEME_INFO') {
+        store.nativeHostStatus.value = msg.payload.connected ? 'connected' : 'disconnected';
       }
     });
 

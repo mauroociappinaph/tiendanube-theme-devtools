@@ -2,7 +2,8 @@ import { usePanelStore } from '../store/panelStore';
 
 export function ReloadThemeButton() {
   const store = usePanelStore();
-  const isLoading = store.status.value.type === 'loading';
+  const s = store.status.value;
+  const isLoading = s.type === 'loading';
   const isDisabled = !store.isConnected.value || isLoading;
 
   const handleClick = () => {
