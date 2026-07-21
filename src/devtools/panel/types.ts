@@ -1,4 +1,5 @@
-import type { ExtensionMessage, NativeHostStatus, ThemeMode } from '@shared/messaging';
+import type { ExtensionMessage } from '@shared/messaging';
+import type { NativeHostStatus, ThemeMode } from './store/panelStore';
 
 export type { ExtensionMessage, NativeHostStatus, ThemeMode };
 
