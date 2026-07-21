@@ -31,12 +31,9 @@ export const ThemePushParamsSchema = z.object({
 // Generic validator
 export function validate<T>(schema: z.ZodSchema<T>, data: unknown): Result<T, DomainError> {
   const result = schema.safeParse(data);
-  if (result.success) return { _tag: 'Ok', value: result.data };
-  return {
-    _tag: 'Err',
-    error: {
-      _tag: 'ValidationFailed',
-      errors: result.error.flatten().fieldErrors,
-    },
-  };
+  if (result.success) return Result.ok(result.data);
+  return Result.err({
+    _tag: 'ValidationFailed',
+    errors: result.error.flatten().fieldErrors,
+  } as const);
 }

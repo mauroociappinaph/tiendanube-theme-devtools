@@ -5,6 +5,8 @@ import type { PageDetectionPayload, HoverEventPayload } from '@shared/messaging'
 import type { StoragePort } from '@shared/ports/StoragePort';
 import type { NativeHostPort } from '@shared/ports/NativeHostPort';
 import { createLogger } from '@shared/logger';
+import { validate } from '@shared/validation';
+import { MessageSchema } from '@shared/validation';
 
 const logger = createLogger('background:message-router');
 
@@ -37,7 +39,14 @@ export class MessageRouter {
     _sender: chrome.runtime.MessageSender,
     sendResponse: (response: unknown) => void
   ): Promise<boolean> {
-    const msg = message as IncomingMessage;
+    const validation = validate(MessageSchema, message);
+    if (validation.isErr) {
+      logger.error('Invalid message format', { details: validation.error });
+      sendResponse({ type: 'ERROR', payload: { message: 'Invalid message format', details: validation.error } });
+      return true;
+    }
+
+    const msg = validation.value;
     
     try {
       switch (msg.type) {
@@ -66,8 +75,13 @@ export class MessageRouter {
         }
 
         case 'SET_MODE': {
-          await this.setThemeMode((msg.payload as { mode: 'local' | 'remote' }).mode);
-          sendResponse({ type: 'THEME_RELOADED', payload: { success: true, message: `Mode set to ${(msg.payload as { mode: string }).mode}` } });
+          const mode = (msg.payload as { mode?: 'local' | 'remote' }).mode;
+          if (mode !== 'local' && mode !== 'remote') {
+            sendResponse({ type: 'ERROR', payload: { message: 'Invalid mode' } });
+            break;
+          }
+          await this.setThemeMode(mode);
+          sendResponse({ type: 'THEME_RELOADED', payload: { success: true, message: `Mode set to ${mode}` } });
           break;
         }
 
@@ -84,10 +98,12 @@ export class MessageRouter {
         }
 
         case 'NATIVE_COMMAND': {
-          await this.forwardToNativeHost(
-            (msg.payload as { command: string }).command,
-            (msg.payload as { payload: unknown }).payload
-          );
+          const command = (msg.payload as { command?: string }).command;
+          if (!command) {
+            sendResponse({ type: 'ERROR', payload: { message: 'Missing native command' } });
+            break;
+          }
+          await this.forwardToNativeHost(command, (msg.payload as { payload?: unknown }).payload);
           sendResponse({ type: 'ACK', payload: { success: true } });
           break;
         }
@@ -134,7 +150,7 @@ export class MessageRouter {
     });
   }
 
-handleContentConnection(port: chrome.runtime.Port): void {
+  handleContentConnection(port: chrome.runtime.Port): void {
     port.onMessage.addListener((message) => {
       void this.handleMessage(message, { tab: { id: 0 } } as chrome.runtime.MessageSender, (response) => {
         port.postMessage(response);
@@ -181,7 +197,7 @@ handleContentConnection(port: chrome.runtime.Port): void {
 
   private async getThemeInfo(): Promise<{ connected: boolean; version: string }> {
     const storage = await this.storage.get(['mode', 'themePath']);
-    const mode = storage._tag === 'Ok' ? storage.value?.mode : undefined;
+    const mode = storage.isOk ? (storage.value?.mode as 'local' | 'remote' | undefined) : undefined;
     return {
       connected: this.nativeHostStatus === 'connected',
       version: mode ?? 'unknown'
