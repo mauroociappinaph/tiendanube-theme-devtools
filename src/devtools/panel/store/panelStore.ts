@@ -1,4 +1,4 @@
-import { signal, computed } from '@preact/signals';
+import { signal, computed, type Signal, type ReadonlySignal } from '@preact/signals';
 
 export type NativeHostStatus = 'connected' | 'disconnected' | 'pending' | 'error';
 export type ThemeMode = 'local' | 'remote';
@@ -12,11 +12,11 @@ export type StatusBarState =
   | { type: 'error'; message: string };
 
 interface PanelStore {
-  nativeHostStatus: ReturnType<typeof signal<NativeHostStatus>>;
-  inspectMode: ReturnType<typeof signal<boolean>>;
-  themeMode: ReturnType<typeof signal<ThemeMode>>;
-  status: ReturnType<typeof signal<StatusBarState>>;
-  isConnected: ReturnType<typeof computed<boolean>>;
+  nativeHostStatus: Signal<NativeHostStatus>;
+  inspectMode: Signal<boolean>;
+  themeMode: Signal<ThemeMode>;
+  status: Signal<StatusBarState>;
+  isConnected: ReadonlySignal<boolean>;
   setLoading: (message: string) => void;
   setSuccess: (message: string) => void;
   setError: (message: string) => void;
