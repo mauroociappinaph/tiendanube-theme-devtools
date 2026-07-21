@@ -2,9 +2,8 @@
 // Implements NativeHostPort using chrome.runtime.connectNative
 
 import type { NativeHostPort, HealthResult } from '@shared/ports/NativeHostPort';
-import type { Result } from '@shared/result';
-import type { DomainError } from '@shared/errors';
-import { ok, err } from '@shared/result';
+import { Result } from '@shared/result';
+import { DomainError } from '@shared/errors';
 import { createLogger } from '@shared/logger';
 
 const logger = createLogger('background:native-host-client');
@@ -34,7 +33,7 @@ export class NativeHostClient implements NativeHostPort {
 
   async connect(): Promise<Result<void, DomainError>> {
     if (this.port) {
-      return ok(undefined);
+      return Result.ok(undefined);
     }
 
     try {
@@ -45,14 +44,14 @@ export class NativeHostClient implements NativeHostPort {
       
       // Send initial health check
       const health = await this.healthCheck();
-      if (health._tag === 'Ok') {
+      if (health.isOk) {
         logger.info('Native host connected and healthy');
       }
       
       this.reconnectAttempts = 0;
-      return ok(undefined);
+      return Result.ok(undefined);
     } catch (error: unknown) {
-      return err({ _tag: 'NativeHostUnavailable', reason: String(error) });
+      return Result.err(new DomainError(String(error), 'NATIVE_HOST_UNAVAILABLE'));
     }
   }
 
@@ -66,12 +65,12 @@ export class NativeHostClient implements NativeHostPort {
 
   async send<T>(command: string, payload: unknown): Promise<Result<T, DomainError>> {
     if (!this.port) {
-      return err({ _tag: 'NativeHostUnavailable', reason: 'Not connected' });
+      return Result.err(new DomainError('Not connected', 'NATIVE_HOST_UNAVAILABLE'));
     }
 
     const correlationId = crypto.randomUUID();
     
-return new Promise((resolve, _reject) => {
+    return new Promise<Result<T, DomainError>>((resolve) => {
       this.pending.set(correlationId, { 
         resolve: resolve as (value: Result<unknown, DomainError>) => void,
       });
@@ -84,7 +83,7 @@ return new Promise((resolve, _reject) => {
       setTimeout(() => {
         if (this.pending.has(correlationId)) {
           this.pending.delete(correlationId);
-          resolve(err({ _tag: 'MessageTimeout', correlationId }));
+          resolve(Result.err(new DomainError(`Message timeout for correlation ${correlationId}`, 'MESSAGE_TIMEOUT', { correlationId })));
         }
       }, 30000);
     });
@@ -107,13 +106,9 @@ return new Promise((resolve, _reject) => {
       this.pending.delete(message.correlationId);
       
       if (message.error) {
-        resolve(err({ 
-          _tag: 'NativeHostError', 
-          code: message.error.code, 
-          message: message.error.message 
-        }));
+        resolve(Result.err(new DomainError(message.error.message, 'NATIVE_HOST_ERROR', { code: message.error.code })));
       } else {
-        resolve(ok(message.result));
+        resolve(Result.ok(message.result));
       }
       return;
     }
@@ -130,7 +125,7 @@ return new Promise((resolve, _reject) => {
     
     // Reject all pending requests
     for (const [, { resolve }] of this.pending) {
-      resolve(err({ _tag: 'NativeHostUnavailable', reason: 'Port disconnected' }));
+      resolve(Result.err(new DomainError('Port disconnected', 'NATIVE_HOST_UNAVAILABLE')));
     }
     this.pending.clear();
     

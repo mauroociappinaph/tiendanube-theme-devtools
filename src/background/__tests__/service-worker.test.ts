@@ -3,6 +3,11 @@ import { describe, it, expect, vi } from 'vitest';
 // Mock Chrome APIs
 const mockChrome = {
   runtime: {
+    OnInstalledReason: {
+      INSTALL: 'install',
+      UPDATE: 'update',
+      CHROME_UPDATE: 'chrome_update',
+    },
     onInstalled: { addListener: vi.fn() },
     onStartup: { addListener: vi.fn() },
     onMessage: { addListener: vi.fn() },
