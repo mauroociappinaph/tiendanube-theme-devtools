@@ -103,10 +103,13 @@ export class ValidationError extends DomainError {
     context?: unknown,
     cause?: unknown
   ) {
-    let finalContext;
+    let finalContext: unknown;
     
-    // Si context es un objeto, úsalo directamente
-    if (context !== undefined && typeof context === 'object' && context !== null && !Array.isArray(context)) {
+    // Si context es null explícito, mantenerlo como null
+    if (context === null) {
+      finalContext = null;
+    } else if (context !== undefined && typeof context === 'object' && !Array.isArray(context)) {
+      // Si context es un objeto, úsalo directamente (ya sabemos que no es null)
       finalContext = context;
     } else if (field !== undefined && context !== undefined && typeof context !== 'object') {
       // Si field y context son ambos strings o simples, crea contexto con field
