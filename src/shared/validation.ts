@@ -2,7 +2,7 @@
 // Zod schemas for all external inputs
 
 import { z } from 'zod';
-import type { Result } from './result';
+import { Result } from './result';
 import type { DomainError } from './errors';
 
 // Environment variables
